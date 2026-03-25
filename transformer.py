@@ -422,10 +422,13 @@ def _(
             mo.md("Explore how different Q and K transformations change the attention pattern."),
             mo.hstack(
                 [
-                    mo.vstack([q_scale, q_rotation, q_bias, _chart_q]),
-                    mo.vstack([k_scale, k_rotation, k_bias, _chart_k]),
-                    _chart_attn,
+                    mo.vstack([q_scale, q_rotation, q_bias]),
+                    mo.vstack([k_scale, k_rotation, k_bias]),
                 ],
+                align="center",
+            ),
+            mo.hstack(
+                [_chart_q, _chart_k, _chart_attn],
                 align="center",
             ),
         ],
