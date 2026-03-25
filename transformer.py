@@ -341,41 +341,6 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(embeddings, heatmap, mo, np, words):
-    _scores = embeddings @ embeddings.T
-    _exp = np.exp(_scores / np.sqrt(embeddings.shape[1]))
-    _attn = _exp / _exp.sum(axis=1, keepdims=True)
-
-    _chart_raw = heatmap(_scores, tick_labels=words, title="Raw dot products", width=300, height=300)
-    _chart_soft = heatmap(_attn, tick_labels=words, title="After softmax", width=300, height=300, vmin=0, vmax=1)
-
-    mo.vstack(
-        [
-            mo.md(
-                r"""
-                The attention score between tokens $i$ and $j$ is the dot product of their query and key vectors:
-
-                $$
-                \text{score}_{ij} = q_i \cdot k_j, \quad S = QK^\top
-                $$
-
-                Scores range from $-\infty$ to $\infty$. We normalize each row with softmax so the weights sum to 1:
-
-                $$
-                \text{attention} = \text{softmax}(QK^\top / \sqrt{d})
-                $$
-
-                We divide by $\sqrt{d}$ to keep the dot products from growing too large in high dimensions, which would push softmax into regions with tiny gradients.
-                """
-            ),
-            mo.ui.tabs({"Raw scores": _chart_raw, "After softmax": _chart_soft}),
-        ],
-        align="center",
-    )
-    return
-
-
-@app.cell(hide_code=True)
 def _(mo):
     q_scale = mo.ui.slider(0.1, 2.5, 0.1, value=1.0, label="Q scale")
     q_rotation = mo.ui.slider(-180, 180, 1, value=0, label="Q rotation")
@@ -431,6 +396,41 @@ def _(
                 [_chart_q, _chart_k, _chart_attn],
                 align="center",
             ),
+        ],
+        align="center",
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(embeddings, heatmap, mo, np, words):
+    _scores = embeddings @ embeddings.T
+    _exp = np.exp(_scores / np.sqrt(embeddings.shape[1]))
+    _attn = _exp / _exp.sum(axis=1, keepdims=True)
+
+    _chart_raw = heatmap(_scores, tick_labels=words, title="Raw dot products", width=300, height=300)
+    _chart_soft = heatmap(_attn, tick_labels=words, title="After softmax", width=300, height=300, vmin=0, vmax=1)
+
+    mo.vstack(
+        [
+            mo.md(
+                r"""
+                The attention score between tokens $i$ and $j$ is the dot product of their query and key vectors:
+
+                $$
+                \text{score}_{ij} = q_i \cdot k_j, \quad S = QK^\top
+                $$
+
+                Scores range from $-\infty$ to $\infty$. We normalize each row with softmax so the weights sum to 1:
+
+                $$
+                \text{attention} = \text{softmax}(QK^\top / \sqrt{d})
+                $$
+
+                We divide by $\sqrt{d}$ to keep the dot products from growing too large in high dimensions, which would push softmax into regions with tiny gradients.
+                """
+            ),
+            mo.ui.tabs({"Raw scores": _chart_raw, "After softmax": _chart_soft}),
         ],
         align="center",
     )
