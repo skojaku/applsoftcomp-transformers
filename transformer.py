@@ -43,12 +43,17 @@ def _(alt, np, pd):
 
         base_original = (
             alt.Chart(df_original)
-            .mark_circle(size=size, color="#dadada", opacity=0.8)
+            .mark_circle(size=size, color="#aaaaaa", opacity=0.8)
             .encode(
                 x=alt.X("x", scale=alt.Scale(domain=[-vmax, vmax])),
                 y=alt.Y("y", scale=alt.Scale(domain=[-vmax, vmax])),
                 tooltip=["word"],
             )
+        )
+        text_original = (
+            alt.Chart(df_original)
+            .mark_text(align="left", dx=10, dy=-5, fontSize=14, color="#aaaaaa")
+            .encode(x="x", y="y", text="word")
         )
         base = (
             alt.Chart(df)
@@ -76,7 +81,7 @@ def _(alt, np, pd):
             .mark_text(align="left", dx=10, dy=-5, fontSize=14)
             .encode(x="x", y="y", text="word")
         )
-        return (base_original + base + vectors + text).properties(
+        return (base_original + text_original + base + vectors + text).properties(
             width=width, height=height, title=title
         )
 
