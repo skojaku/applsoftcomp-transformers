@@ -1,7 +1,10 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "altair==6.0.0",
 #     "marimo>=0.21.1",
+#     "numpy==2.4.3",
+#     "pandas==3.0.1",
 # ]
 # ///
 
@@ -254,12 +257,16 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(embeddings, mo, np, pd, scatter_plot, words):
+def _(mo):
     slider_money = mo.ui.slider(0, 1, 0.05, value=0.25, label="money")
     slider_loan = mo.ui.slider(0, 1, 0.05, value=0.25, label="loan")
     slider_river = mo.ui.slider(0, 1, 0.05, value=0.25, label="river")
     slider_shore = mo.ui.slider(0, 1, 0.05, value=0.25, label="shore")
+    return slider_loan, slider_money, slider_river, slider_shore
 
+
+@app.cell(hide_code=True)
+def _(embeddings, mo, np, pd, scatter_plot, slider_loan, slider_money, slider_river, slider_shore, words):
     _raw = np.array(
         [1.0, slider_money.value, slider_loan.value, slider_river.value, slider_shore.value]
     )
@@ -353,14 +360,18 @@ def _(embeddings, heatmap, mo, np, words):
 
 
 @app.cell(hide_code=True)
-def _(compute_attention, emb2df, embeddings, heatmap, mo, scatter_plot, words):
+def _(mo):
     q_scale = mo.ui.slider(0.1, 2.5, 0.1, value=1.0, label="Q scale")
     q_rotation = mo.ui.slider(-180, 180, 1, value=0, label="Q rotation")
     q_bias = mo.ui.slider(-1, 1, 0.1, value=0, label="Q bias")
     k_scale = mo.ui.slider(0.1, 2.5, 0.1, value=1.0, label="K scale")
     k_rotation = mo.ui.slider(-180, 180, 1, value=0, label="K rotation")
     k_bias = mo.ui.slider(-1, 1, 0.1, value=0, label="K bias")
+    return k_bias, k_rotation, k_scale, q_bias, q_rotation, q_scale
 
+
+@app.cell(hide_code=True)
+def _(compute_attention, emb2df, embeddings, heatmap, k_bias, k_rotation, k_scale, mo, q_bias, q_rotation, q_scale, scatter_plot, words):
     _orig_q, _tf_q, _W_q, _b_q = emb2df(
         words, embeddings, q_scale.value, q_rotation.value, q_bias.value
     )
