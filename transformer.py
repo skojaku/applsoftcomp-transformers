@@ -1,10 +1,14 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "marimo>=0.21.1",
+# ]
+# ///
+
 import marimo
 
-__generated_with = "0.11.14-dev6"
+__generated_with = "0.21.1"
 app = marimo.App(width="medium")
-
-
-# --- Preamble ---
 
 
 @app.cell(hide_code=True)
@@ -13,6 +17,7 @@ def _():
     import numpy as np
     import pandas as pd
     import altair as alt
+
     return alt, mo, np, pd
 
 
@@ -201,19 +206,14 @@ def _(np):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        """
-        # Transformers Inside Out
+    mo.md("""
+    # Transformers Inside Out
 
-        *An Interactive Guide to Attention, Residual Connections, and Positional Encoding*
+    *An Interactive Guide to Attention, Residual Connections, and Positional Encoding*
 
-        [@SadamoriKojaku](https://skojaku.github.io/)
-        """
-    )
+    [@SadamoriKojaku](https://skojaku.github.io/)
+    """)
     return
-
-
-# --- Section 1: Attention as Weighted Average ---
 
 
 @app.cell(hide_code=True)
@@ -241,17 +241,15 @@ def _(embeddings, mo, pd, scatter_plot, words):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        The simplest idea: compute a weighted average of all word vectors in the sentence.
+    mo.md(r"""
+    The simplest idea: compute a weighted average of all word vectors in the sentence.
 
-        $$
-        v_{\text{bank}}^{\text{new}} = w_1 \, v_{\text{bank}} + w_2 \, v_{\text{money}} + w_3 \, v_{\text{loan}} + w_4 \, v_{\text{river}} + w_5 \, v_{\text{shore}}
-        $$
+    $$
+    v_{\text{bank}}^{\text{new}} = w_1 \, v_{\text{bank}} + w_2 \, v_{\text{money}} + w_3 \, v_{\text{loan}} + w_4 \, v_{\text{river}} + w_5 \, v_{\text{shore}}
+    $$
 
-        If we put large weight on "money" and "loan," the new "bank" vector shifts toward the financial cluster. Weight "river" and "shore" instead, and it drifts toward geography.
-        """
-    )
+    If we put large weight on "money" and "loan," the new "bank" vector shifts toward the financial cluster. Weight "river" and "shore" instead, and it drifts toward geography.
+    """)
     return
 
 
@@ -294,35 +292,28 @@ def _(embeddings, mo, np, pd, scatter_plot, words):
         ],
         align="center",
     )
-    return slider_loan, slider_money, slider_river, slider_shore
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(
-        """
-        The output is just a weighted average. The real question is: how do we compute these weights automatically? This is what the attention mechanism learns.
-        """
-    )
     return
 
 
-# --- Section 2: Computing Weights with Query and Key ---
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    The output is just a weighted average. The real question is: how do we compute these weights automatically? This is what the attention mechanism learns.
+    """)
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        ## Computing Weights with Query and Key
+    mo.md(r"""
+    ## Computing Weights with Query and Key
 
-        We train two small neural networks. One produces a *query* vector for each word -- think of it as asking "what am I looking for?" The other produces a *key* vector -- answering "what do I contain?"
+    We train two small neural networks. One produces a *query* vector for each word -- think of it as asking "what am I looking for?" The other produces a *key* vector -- answering "what do I contain?"
 
-        When a query and key point in similar directions, their dot product is large, meaning strong attention.
+    When a query and key point in similar directions, their dot product is large, meaning strong attention.
 
-        <img width="350" src="https://github.com/user-attachments/assets/d33313c7-f11f-47eb-8a77-6fd78967bb47" />
-        """
-    )
+    <img width="350" src="https://github.com/user-attachments/assets/d33313c7-f11f-47eb-8a77-6fd78967bb47" />
+    """)
     return
 
 
@@ -399,27 +390,22 @@ def _(compute_attention, emb2df, embeddings, heatmap, mo, scatter_plot, words):
         ],
         align="center",
     )
-    return k_bias, k_rotation, k_scale, q_bias, q_rotation, q_scale
-
-
-# --- Section 3: The Full Picture -- QKV ---
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        ## The Full Picture -- QKV
+    mo.md(r"""
+    ## The Full Picture -- QKV
 
-        We have one more neural network: the value transformation. It produces the vectors that actually get averaged.
+    We have one more neural network: the value transformation. It produces the vectors that actually get averaged.
 
-        Query and Key decide *how much* each word attends. Value decides *what* gets mixed.
+    Query and Key decide *how much* each word attends. Value decides *what* gets mixed.
 
-        $$
-        \text{Attention}(Q,K,V) = \text{softmax}\!\left(\frac{QK^\top}{\sqrt{d}}\right) \cdot V
-        $$
-        """
-    )
+    $$
+    \text{Attention}(Q,K,V) = \text{softmax}\!\left(\frac{QK^\top}{\sqrt{d}}\right) \cdot V
+    $$
+    """)
     return
 
 
@@ -475,65 +461,53 @@ def _(compute_attention, embeddings, heatmap, mo, np, pd, scatter_plot, words):
         ],
         align="center",
     )
-    return attn_weights, qkv_output
+    return (qkv_output,)
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        """
-        That is the core of self-attention. Every token looks at every other token, computes how relevant they are (via Q and K), and produces a weighted average of value vectors. Next, let's see how transformers use multiple attention heads in parallel.
-        """
-    )
+    mo.md("""
+    That is the core of self-attention. Every token looks at every other token, computes how relevant they are (via Q and K), and produces a weighted average of value vectors. Next, let's see how transformers use multiple attention heads in parallel.
+    """)
     return
-
-
-# --- Section 4: Multi-Head Attention ---
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        """
-        ## Multi-Head Attention
+    mo.md("""
+    ## Multi-Head Attention
 
-        A single attention head can only learn one pattern of relationships. Multi-head attention runs several heads in parallel, each with its own Q, K, V weights.
+    A single attention head can only learn one pattern of relationships. Multi-head attention runs several heads in parallel, each with its own Q, K, V weights.
 
-        One head might learn financial associations for "bank," another geographical ones. The outputs from all heads are concatenated and linearly projected.
+    One head might learn financial associations for "bank," another geographical ones. The outputs from all heads are concatenated and linearly projected.
 
-        ![](https://github.com/skojaku/applied-soft-comp/blob/master/docs/lecture-note/figs/transformer-multihead-attention.jpg?raw=true)
-        """
-    )
+    ![](https://github.com/skojaku/applied-soft-comp/blob/master/docs/lecture-note/figs/transformer-multihead-attention.jpg?raw=true)
+    """)
     return
-
-
-# --- Section 5: The Residual Stream ---
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        ## The Residual Stream
+    mo.md(r"""
+    ## The Residual Stream
 
-        Let's step back and look at how attention fits into the bigger picture. In a transformer, there is a central *residual stream* -- a highway that carries information through every layer.
+    Let's step back and look at how attention fits into the bigger picture. In a transformer, there is a central *residual stream* -- a highway that carries information through every layer.
 
-        Each attention layer does not replace the stream. It computes a small correction and *adds* it back:
+    Each attention layer does not replace the stream. It computes a small correction and *adds* it back:
 
-        $$
-        \text{output} = x + \text{Attention}(x)
-        $$
+    $$
+    \text{output} = x + \text{Attention}(x)
+    $$
 
-        The network only needs to learn what is *missing* -- the residual -- not reconstruct everything from scratch.
+    The network only needs to learn what is *missing* -- the residual -- not reconstruct everything from scratch.
 
-        ![ResBlock](https://upload.wikimedia.org/wikipedia/commons/b/ba/ResBlock.png)
-        """
-    )
+    ![ResBlock](https://upload.wikimedia.org/wikipedia/commons/b/ba/ResBlock.png)
+    """)
     return
 
 
 @app.cell(hide_code=True)
-def _(alt, attn_weights, embeddings, mo, np, pd, qkv_output, words):
+def _(alt, embeddings, mo, np, pd, qkv_output, words):
     # Residual = original + attention correction
     _correction = qkv_output - embeddings  # the "residual" that attention adds
     _residual_output = embeddings + _correction  # same as qkv_output, but framed as x + f(x)
@@ -603,40 +577,31 @@ def _(alt, attn_weights, embeddings, mo, np, pd, qkv_output, words):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        """
-        This framing explains why transformers can stack dozens of layers. Each layer makes a small adjustment. Without residual connections, information would degrade after just a few layers.
+    mo.md("""
+    This framing explains why transformers can stack dozens of layers. Each layer makes a small adjustment. Without residual connections, information would degrade after just a few layers.
 
-        It also helps gradients flow during training -- the addition operation creates a direct path for gradients to travel backward through many layers.
-        """
-    )
-    return
-
-
-# --- Section 6: Masked Attention -- Causal Models ---
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(
-        r"""
-        ## Masked Attention -- Causal Models
-
-        When generating text, the model produces one word at a time. At each step, it should only attend to words that came *before* -- never peek ahead.
-
-        Consider translating "I love you" to "Je t'aime." When predicting "t'", the model can see "Je" but not "aime." We enforce this with a mask.
-        """
-    )
+    It also helps gradients flow during training -- the addition operation creates a direct path for gradients to travel backward through many layers.
+    """)
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        We set attention scores for future positions to $-\infty$ before softmax, which zeros them out. This creates a lower-triangular attention matrix -- each token only attends to itself and earlier tokens.
-        """
-    )
+    mo.md(r"""
+    ## Masked Attention -- Causal Models
+
+    When generating text, the model produces one word at a time. At each step, it should only attend to words that came *before* -- never peek ahead.
+
+    Consider translating "I love you" to "Je t'aime." When predicting "t'", the model can see "Je" but not "aime." We enforce this with a mask.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    We set attention scores for future positions to $-\infty$ before softmax, which zeros them out. This creates a lower-triangular attention matrix -- each token only attends to itself and earlier tokens.
+    """)
     return
 
 
@@ -673,27 +638,22 @@ def _(apply_causal_mask, en_embeddings, en_words, heatmap, mo, np):
     return
 
 
-# --- Section 7: Cross-Attention ---
-
-
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        """
-        ## Cross-Attention
+    mo.md("""
+    ## Cross-Attention
 
-        In self-attention, Q, K, and V all come from the same sequence. In cross-attention, the query comes from one sequence while keys and values come from another.
+    In self-attention, Q, K, and V all come from the same sequence. In cross-attention, the query comes from one sequence while keys and values come from another.
 
-        This is how a translation model connects its understanding of the source language to the target it is generating.
+    This is how a translation model connects its understanding of the source language to the target it is generating.
 
-        ![](https://skojaku.github.io/applied-soft-comp/_images/transformer-cross-attention.jpg)
-        """
-    )
+    ![](https://skojaku.github.io/applied-soft-comp/_images/transformer-cross-attention.jpg)
+    """)
     return
 
 
 @app.cell(hide_code=True)
-def _(en_embeddings, en_words, fr_embeddings, fr_words, heatmap, mo, np):
+def _(alt, en_embeddings, en_words, fr_embeddings, fr_words, heatmap, mo, np, pd):
     np.random.seed(7)
     _W_q_cross = np.random.randn(2, 2) * 0.6
     _W_k_cross = np.random.randn(2, 2) * 0.6
@@ -720,8 +680,6 @@ def _(en_embeddings, en_words, fr_embeddings, fr_words, heatmap, mo, np):
     for i in range(len(fr_words)):
         for j in range(len(en_words)):
             _data.append({"French": fr_words[i], "English": en_words[j], "value": _attn_cross[i, j]})
-    import altair as alt
-    import pandas as pd
 
     _df_cross = pd.DataFrame(_data)
     _base = (
@@ -757,40 +715,33 @@ def _(en_embeddings, en_words, fr_embeddings, fr_words, heatmap, mo, np):
     return
 
 
-# --- Section 8: Putting It Together ---
-
-
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        """
-        ## Putting It Together
+    mo.md("""
+    ## Putting It Together
 
-        Here is the full transformer architecture. Input embeddings are combined with positional encodings, then passed through repeated blocks of multi-head self-attention, add-and-norm, and feed-forward layers.
+    Here is the full transformer architecture. Input embeddings are combined with positional encodings, then passed through repeated blocks of multi-head self-attention, add-and-norm, and feed-forward layers.
 
-        ![](https://d2l.ai/_images/transformer.svg)
+    ![](https://d2l.ai/_images/transformer.svg)
 
-        Variants include encoder-only (BERT), decoder-only (GPT), and encoder-decoder (the original Transformer, T5).
-        """
-    )
+    Variants include encoder-only (BERT), decoder-only (GPT), and encoder-decoder (the original Transformer, T5).
+    """)
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        ### Layer Normalization
+    mo.md(r"""
+    ### Layer Normalization
 
-        Layer normalization rescales each token vector to have zero mean and unit variance, then applies learnable parameters:
+    Layer normalization rescales each token vector to have zero mean and unit variance, then applies learnable parameters:
 
-        $$
-        \text{LN}(x) = \gamma \cdot \frac{x - \mu}{\sqrt{\sigma^2 + \epsilon}} + \beta
-        $$
+    $$
+    \text{LN}(x) = \gamma \cdot \frac{x - \mu}{\sqrt{\sigma^2 + \epsilon}} + \beta
+    $$
 
-        This prevents signals from growing or shrinking as they pass through many layers.
-        """
-    )
+    This prevents signals from growing or shrinking as they pass through many layers.
+    """)
     return
 
 
@@ -802,7 +753,15 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(alt, d_model_slider, get_positional_encoding, mo, np, pd, position_slider):
+def _(
+    alt,
+    d_model_slider,
+    get_positional_encoding,
+    mo,
+    np,
+    pd,
+    position_slider,
+):
     _seq_len = position_slider.value
     _d_model = d_model_slider.value
     _pos_enc = get_positional_encoding(_seq_len, _d_model)
@@ -878,17 +837,15 @@ def _(alt, d_model_slider, get_positional_encoding, mo, np, pd, position_slider)
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        """
-        ## Further Readings
+    mo.md("""
+    ## Further Readings
 
-        - [Attention is All You Need](https://arxiv.org/abs/1706.03762)
-        - [3Blue1Brown - Visualizing Attention](https://www.3blue1brown.com/lessons/attention)
-        - [Transformer Explainer](https://poloclub.github.io/transformer-explainer/)
-        - [The Annotated Transformer](https://nlp.seas.harvard.edu/2018/04/03/attention.html)
-        - [You could have designed state of the art positional encoding](https://huggingface.co/blog/designing-positional-encoding)
-        """
-    )
+    - [Attention is All You Need](https://arxiv.org/abs/1706.03762)
+    - [3Blue1Brown - Visualizing Attention](https://www.3blue1brown.com/lessons/attention)
+    - [Transformer Explainer](https://poloclub.github.io/transformer-explainer/)
+    - [The Annotated Transformer](https://nlp.seas.harvard.edu/2018/04/03/attention.html)
+    - [You could have designed state of the art positional encoding](https://huggingface.co/blog/designing-positional-encoding)
+    """)
     return
 
 
