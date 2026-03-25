@@ -646,9 +646,10 @@ def _(
     pd,
 ):
     def _():
-        np.random.seed(7)
-        _W_q_cross = np.random.randn(2, 2) * 0.6
-        _W_k_cross = np.random.randn(2, 2) * 0.6
+        # Hand-picked weights so the alignment is clear:
+        # Je -> I, t' -> you, aime -> love
+        _W_q_cross = np.array([[2.0, -0.8], [0.5, 2.5]])
+        _W_k_cross = np.array([[2.2, 0.3], [-0.6, 2.0]])
 
         _Q_fr = fr_embeddings @ _W_q_cross
         _K_en = en_embeddings @ _W_k_cross
