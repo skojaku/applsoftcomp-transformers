@@ -1,0 +1,896 @@
+import marimo
+
+__generated_with = "0.11.14-dev6"
+app = marimo.App(width="medium")
+
+
+# --- Preamble ---
+
+
+@app.cell(hide_code=True)
+def _():
+    import marimo as mo
+    import numpy as np
+    import pandas as pd
+    import altair as alt
+    return alt, mo, np, pd
+
+
+@app.cell(hide_code=True)
+def _(alt, np, pd):
+    # --- Helper functions ---
+
+    def scatter_plot(
+        df,
+        df_original,
+        color="#ff7f0e",
+        width=300,
+        height=300,
+        size=100,
+        title=None,
+        vmax=2,
+    ):
+        if vmax is None:
+            vmax = np.maximum(np.max(np.abs(df["x"])), np.max(np.abs(df["y"])))
+
+        base_original = (
+            alt.Chart(df_original)
+            .mark_circle(size=size, color="#dadada", opacity=0.8)
+            .encode(
+                x=alt.X("x", scale=alt.Scale(domain=[-vmax, vmax])),
+                y=alt.Y("y", scale=alt.Scale(domain=[-vmax, vmax])),
+                tooltip=["word"],
+            )
+        )
+        base = (
+            alt.Chart(df)
+            .mark_circle(size=size, color=color)
+            .encode(
+                x=alt.X("x", scale=alt.Scale(domain=[-vmax, vmax])),
+                y=alt.Y("y", scale=alt.Scale(domain=[-vmax, vmax])),
+                tooltip=["word"],
+            )
+        )
+        vectors = (
+            alt.Chart(df)
+            .mark_line(color=color, opacity=0.5)
+            .encode(
+                x=alt.X("x0:Q", scale=alt.Scale(domain=[-vmax, vmax])),
+                x2=alt.X2("x:Q"),
+                y=alt.Y("y0:Q", scale=alt.Scale(domain=[-vmax, vmax])),
+                y2=alt.Y2("y:Q"),
+                angle=alt.value(0),
+            )
+            .transform_calculate(x0="0", y0="0")
+        )
+        text = (
+            alt.Chart(df)
+            .mark_text(align="left", dx=10, dy=-5, fontSize=14)
+            .encode(x="x", y="y", text="word")
+        )
+        return (base_original + base + vectors + text).properties(
+            width=width, height=height, title=title
+        )
+
+    def heatmap(
+        matrix,
+        tick_labels=None,
+        title=None,
+        width=300,
+        height=300,
+        vmin=None,
+        vmax=None,
+    ):
+        data = []
+        for i, row in enumerate(matrix):
+            for j, value in enumerate(row):
+                data.append(
+                    {
+                        "x": tick_labels[j] if tick_labels else j,
+                        "y": tick_labels[i] if tick_labels else i,
+                        "value": value,
+                    }
+                )
+        df = pd.DataFrame(data)
+        min_val = df["value"].min() if vmin is None else vmin
+        max_val = df["value"].max() if vmax is None else vmax
+        domain = [min_val, max_val]
+
+        base = (
+            alt.Chart(df)
+            .mark_rect(strokeWidth=1, stroke="white")
+            .encode(
+                x=alt.X("x:N", title="", axis=alt.Axis(labelAngle=45), sort=None),
+                y=alt.Y("y:N", title="", sort=None),
+                color=alt.Color(
+                    "value",
+                    scale=alt.Scale(domain=domain, scheme="inferno", clamp=True),
+                    legend=alt.Legend(title="Value", orient="right"),
+                ),
+            )
+        )
+        text_layer = (
+            alt.Chart(df)
+            .mark_text(baseline="middle", align="center")
+            .encode(
+                x="x:N",
+                y="y:N",
+                text=alt.Text("value:Q", format=".2f"),
+                color=alt.condition(
+                    alt.datum.value < (domain[1] + domain[0]) / 2,
+                    alt.value("white"),
+                    alt.value("black"),
+                ),
+            )
+        )
+        return (base + text_layer).properties(width=width, height=height, title=title)
+
+    def emb2df(words, embeddings, scale, rotation, bias):
+        theta = np.radians(rotation)
+        scale_matrix = np.array([[scale, 0], [0, scale]])
+        rotation_matrix = np.array(
+            [[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]]
+        )
+        W = scale_matrix @ rotation_matrix
+        b = np.array([bias, bias])
+        transformed = embeddings @ W + b
+        original_df = pd.DataFrame(
+            {"word": words, "x": embeddings[:, 0], "y": embeddings[:, 1]}
+        )
+        transformed_df = pd.DataFrame(
+            {"word": words, "x": transformed[:, 0], "y": transformed[:, 1]}
+        )
+        return original_df, transformed_df, W, b
+
+    def compute_attention(Q, K):
+        d = Q.shape[1]
+        scores = Q @ K.T / np.sqrt(d)
+        exp_scores = np.exp(scores - np.max(scores, axis=1, keepdims=True))
+        return exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
+
+    def apply_causal_mask(scores):
+        n = scores.shape[0]
+        mask = np.triu(np.ones((n, n)), k=1) * (-1e9)
+        masked = scores + mask
+        exp_scores = np.exp(masked - np.max(masked, axis=1, keepdims=True))
+        return exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
+
+    def get_positional_encoding(seq_len, d_model):
+        pos_enc = np.zeros((seq_len, d_model))
+        for pos in range(seq_len):
+            for i in range(0, d_model, 2):
+                pos_enc[pos, i] = np.sin(pos / (10000 ** (i / d_model)))
+                if i + 1 < d_model:
+                    pos_enc[pos, i + 1] = np.cos(pos / (10000 ** (i / d_model)))
+        return pos_enc
+
+    return (
+        apply_causal_mask,
+        compute_attention,
+        emb2df,
+        get_positional_encoding,
+        heatmap,
+        scatter_plot,
+    )
+
+
+@app.cell(hide_code=True)
+def _(np):
+    # --- Data ---
+    words = ["bank", "money", "loan", "river", "shore"]
+    embeddings = (
+        np.array(
+            [
+                [0.0, -0.3],
+                [-0.8, -0.3],
+                [-0.7, -0.6],
+                [0.7, -0.5],
+                [0.6, -0.7],
+            ]
+        )
+        * 2
+    )
+
+    # Translation tokens for later sections
+    en_words = ["I", "love", "you"]
+    en_embeddings = np.array([[0.5, 0.8], [-0.3, 0.6], [0.7, -0.2]])
+    fr_words = ["Je", "t'", "aime"]
+    fr_embeddings = np.array([[0.4, 0.9], [-0.5, 0.3], [0.6, -0.4]])
+    return embeddings, en_embeddings, en_words, fr_embeddings, fr_words, words
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        """
+        # Transformers Inside Out
+
+        *An Interactive Guide to Attention, Residual Connections, and Positional Encoding*
+
+        [@SadamoriKojaku](https://skojaku.github.io/)
+        """
+    )
+    return
+
+
+# --- Section 1: Attention as Weighted Average ---
+
+
+@app.cell(hide_code=True)
+def _(embeddings, mo, pd, scatter_plot, words):
+    _df = pd.DataFrame({"word": words, "x": embeddings[:, 0], "y": embeddings[:, 1]})
+    _chart = scatter_plot(_df, _df, title="Static Word Embeddings", width=400, height=400)
+
+    mo.vstack(
+        [
+            mo.md(
+                """
+                ## Attention as Weighted Average
+
+                Consider the word "bank." A static embedding gives it one fixed position, but its meaning shifts depending on context -- is it a financial institution or the side of a river?
+
+                We need a way to let surrounding words influence the meaning of "bank."
+                """
+            ),
+            _chart,
+        ],
+        align="center",
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+        The simplest idea: compute a weighted average of all word vectors in the sentence.
+
+        $$
+        v_{\text{bank}}^{\text{new}} = w_1 \, v_{\text{bank}} + w_2 \, v_{\text{money}} + w_3 \, v_{\text{loan}} + w_4 \, v_{\text{river}} + w_5 \, v_{\text{shore}}
+        $$
+
+        If we put large weight on "money" and "loan," the new "bank" vector shifts toward the financial cluster. Weight "river" and "shore" instead, and it drifts toward geography.
+        """
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(embeddings, mo, np, pd, scatter_plot, words):
+    slider_money = mo.ui.slider(0, 1, 0.05, value=0.25, label="money")
+    slider_loan = mo.ui.slider(0, 1, 0.05, value=0.25, label="loan")
+    slider_river = mo.ui.slider(0, 1, 0.05, value=0.25, label="river")
+    slider_shore = mo.ui.slider(0, 1, 0.05, value=0.25, label="shore")
+
+    _raw = np.array(
+        [1.0, slider_money.value, slider_loan.value, slider_river.value, slider_shore.value]
+    )
+    _weights = _raw / _raw.sum()
+    _new_vec = _weights @ embeddings
+
+    _df_orig = pd.DataFrame({"word": words, "x": embeddings[:, 0], "y": embeddings[:, 1]})
+    _df_new = pd.DataFrame({"word": ["bank (new)"], "x": [_new_vec[0]], "y": [_new_vec[1]]})
+
+    _chart = scatter_plot(_df_new, _df_orig, title="Contextualized 'bank'", width=400, height=400)
+
+    _eq = (
+        r"$v_{\text{bank}}^{\text{new}} = "
+        + " + ".join(
+            f"{_weights[i]:.2f} \\, v_{{\\text{{{words[i]}}}}}$"
+            if i == len(words) - 1
+            else f"{_weights[i]:.2f} \\, v_{{\\text{{{words[i]}}}}}"
+            for i in range(len(words))
+        )
+    )
+
+    mo.vstack(
+        [
+            mo.md("Drag the sliders to change the weights and see how 'bank' moves."),
+            mo.hstack(
+                [mo.vstack([slider_money, slider_loan, slider_river, slider_shore]), _chart],
+                align="center",
+            ),
+            mo.md(_eq),
+        ],
+        align="center",
+    )
+    return slider_loan, slider_money, slider_river, slider_shore
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        """
+        The output is just a weighted average. The real question is: how do we compute these weights automatically? This is what the attention mechanism learns.
+        """
+    )
+    return
+
+
+# --- Section 2: Computing Weights with Query and Key ---
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+        ## Computing Weights with Query and Key
+
+        We train two small neural networks. One produces a *query* vector for each word -- think of it as asking "what am I looking for?" The other produces a *key* vector -- answering "what do I contain?"
+
+        When a query and key point in similar directions, their dot product is large, meaning strong attention.
+
+        <img width="350" src="https://github.com/user-attachments/assets/d33313c7-f11f-47eb-8a77-6fd78967bb47" />
+        """
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(embeddings, heatmap, mo, np, words):
+    _scores = embeddings @ embeddings.T
+    _exp = np.exp(_scores / np.sqrt(embeddings.shape[1]))
+    _attn = _exp / _exp.sum(axis=1, keepdims=True)
+
+    _chart_raw = heatmap(_scores, tick_labels=words, title="Raw dot products", width=300, height=300)
+    _chart_soft = heatmap(_attn, tick_labels=words, title="After softmax", width=300, height=300, vmin=0, vmax=1)
+
+    mo.vstack(
+        [
+            mo.md(
+                r"""
+                The attention score between tokens $i$ and $j$ is the dot product of their query and key vectors:
+
+                $$
+                \text{score}_{ij} = q_i \cdot k_j, \quad S = QK^\top
+                $$
+
+                Scores range from $-\infty$ to $\infty$. We normalize each row with softmax so the weights sum to 1:
+
+                $$
+                \text{attention} = \text{softmax}(QK^\top / \sqrt{d})
+                $$
+
+                We divide by $\sqrt{d}$ to keep the dot products from growing too large in high dimensions, which would push softmax into regions with tiny gradients.
+                """
+            ),
+            mo.ui.tabs({"Raw scores": _chart_raw, "After softmax": _chart_soft}),
+        ],
+        align="center",
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(compute_attention, emb2df, embeddings, heatmap, mo, scatter_plot, words):
+    q_scale = mo.ui.slider(0.1, 2.5, 0.1, value=1.0, label="Q scale")
+    q_rotation = mo.ui.slider(-180, 180, 1, value=0, label="Q rotation")
+    q_bias = mo.ui.slider(-1, 1, 0.1, value=0, label="Q bias")
+    k_scale = mo.ui.slider(0.1, 2.5, 0.1, value=1.0, label="K scale")
+    k_rotation = mo.ui.slider(-180, 180, 1, value=0, label="K rotation")
+    k_bias = mo.ui.slider(-1, 1, 0.1, value=0, label="K bias")
+
+    _orig_q, _tf_q, _W_q, _b_q = emb2df(
+        words, embeddings, q_scale.value, q_rotation.value, q_bias.value
+    )
+    _orig_k, _tf_k, _W_k, _b_k = emb2df(
+        words, embeddings, k_scale.value, k_rotation.value, k_bias.value
+    )
+
+    _Q = embeddings @ _W_q + _b_q
+    _K = embeddings @ _W_k + _b_k
+    _attn = compute_attention(_Q, _K)
+
+    _chart_q = scatter_plot(_tf_q, _orig_q, title="Query (Q)", width=200, height=200)
+    _chart_k = scatter_plot(_tf_k, _orig_k, title="Key (K)", width=200, height=200)
+    _chart_attn = heatmap(_attn, tick_labels=words, title="Attention weights", width=250, height=250, vmin=0, vmax=1)
+
+    mo.vstack(
+        [
+            mo.md("Explore how different Q and K transformations change the attention pattern."),
+            mo.hstack(
+                [
+                    mo.vstack([q_scale, q_rotation, q_bias, _chart_q]),
+                    mo.vstack([k_scale, k_rotation, k_bias, _chart_k]),
+                    _chart_attn,
+                ],
+                align="center",
+            ),
+        ],
+        align="center",
+    )
+    return k_bias, k_rotation, k_scale, q_bias, q_rotation, q_scale
+
+
+# --- Section 3: The Full Picture -- QKV ---
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+        ## The Full Picture -- QKV
+
+        We have one more neural network: the value transformation. It produces the vectors that actually get averaged.
+
+        Query and Key decide *how much* each word attends. Value decides *what* gets mixed.
+
+        $$
+        \text{Attention}(Q,K,V) = \text{softmax}\!\left(\frac{QK^\top}{\sqrt{d}}\right) \cdot V
+        $$
+        """
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(compute_attention, embeddings, heatmap, mo, np, pd, scatter_plot, words):
+    # Hardcoded Q/K/V params chosen so "bank" attends to money/loan
+    _theta_q = np.radians(30)
+    _W_q = 1.2 * np.array(
+        [[np.cos(_theta_q), -np.sin(_theta_q)], [np.sin(_theta_q), np.cos(_theta_q)]]
+    )
+    _b_q = np.array([-0.3, -0.3])
+
+    _theta_k = np.radians(-15)
+    _W_k = 1.0 * np.array(
+        [[np.cos(_theta_k), -np.sin(_theta_k)], [np.sin(_theta_k), np.cos(_theta_k)]]
+    )
+    _b_k = np.array([0.0, 0.0])
+
+    _theta_v = np.radians(10)
+    _W_v = 0.8 * np.array(
+        [[np.cos(_theta_v), -np.sin(_theta_v)], [np.sin(_theta_v), np.cos(_theta_v)]]
+    )
+    _b_v = np.array([0.1, 0.1])
+
+    _Q = embeddings @ _W_q + _b_q
+    _K = embeddings @ _W_k + _b_k
+    _V = embeddings @ _W_v + _b_v
+
+    attn_weights = compute_attention(_Q, _K)
+    qkv_output = attn_weights @ _V
+
+    _df_out = pd.DataFrame({"word": words, "x": qkv_output[:, 0], "y": qkv_output[:, 1]})
+    _df_orig = pd.DataFrame({"word": words, "x": embeddings[:, 0], "y": embeddings[:, 1]})
+
+    _chart_attn = heatmap(
+        attn_weights, tick_labels=words, title="Attention weights", width=280, height=280, vmin=0, vmax=1
+    )
+    _chart_out = scatter_plot(_df_out, _df_orig, title="Attention output", width=300, height=300)
+
+    _eq = (
+        r"$v_{\text{bank}}^{\text{out}} = "
+        + " + ".join(
+            f"{attn_weights[0, i]:.2f} \\, v_{{\\text{{{words[i]}}}}}"
+            for i in range(len(words))
+        )
+        + "$"
+    )
+
+    mo.vstack(
+        [
+            mo.hstack([_chart_attn, _chart_out], align="center"),
+            mo.md(_eq),
+        ],
+        align="center",
+    )
+    return attn_weights, qkv_output
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        """
+        That is the core of self-attention. Every token looks at every other token, computes how relevant they are (via Q and K), and produces a weighted average of value vectors. Next, let's see how transformers use multiple attention heads in parallel.
+        """
+    )
+    return
+
+
+# --- Section 4: Multi-Head Attention ---
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        """
+        ## Multi-Head Attention
+
+        A single attention head can only learn one pattern of relationships. Multi-head attention runs several heads in parallel, each with its own Q, K, V weights.
+
+        One head might learn financial associations for "bank," another geographical ones. The outputs from all heads are concatenated and linearly projected.
+
+        ![](https://github.com/skojaku/applied-soft-comp/blob/master/docs/lecture-note/figs/transformer-multihead-attention.jpg?raw=true)
+        """
+    )
+    return
+
+
+# --- Section 5: The Residual Stream ---
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+        ## The Residual Stream
+
+        Let's step back and look at how attention fits into the bigger picture. In a transformer, there is a central *residual stream* -- a highway that carries information through every layer.
+
+        Each attention layer does not replace the stream. It computes a small correction and *adds* it back:
+
+        $$
+        \text{output} = x + \text{Attention}(x)
+        $$
+
+        The network only needs to learn what is *missing* -- the residual -- not reconstruct everything from scratch.
+
+        ![ResBlock](https://upload.wikimedia.org/wikipedia/commons/b/ba/ResBlock.png)
+        """
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(alt, attn_weights, embeddings, mo, np, pd, qkv_output, words):
+    # Residual = original + attention correction
+    _correction = qkv_output - embeddings  # the "residual" that attention adds
+    _residual_output = embeddings + _correction  # same as qkv_output, but framed as x + f(x)
+
+    _df_vis = pd.DataFrame(
+        {
+            "word": words,
+            "x_orig": embeddings[:, 0],
+            "y_orig": embeddings[:, 1],
+            "x_new": _residual_output[:, 0],
+            "y_new": _residual_output[:, 1],
+        }
+    )
+
+    _vmax = np.max(np.abs(np.concatenate([embeddings, _residual_output]))) + 0.5
+
+    _arrows = (
+        alt.Chart(_df_vis)
+        .mark_rule(strokeWidth=1.5)
+        .encode(
+            x=alt.X("x_orig:Q", scale=alt.Scale(domain=[-_vmax, _vmax])),
+            y=alt.Y("y_orig:Q", scale=alt.Scale(domain=[-_vmax, _vmax])),
+            x2="x_new:Q",
+            y2="y_new:Q",
+            color=alt.value("#999"),
+        )
+    )
+    _pts_orig = (
+        alt.Chart(_df_vis)
+        .mark_circle(size=100, color="#dadada")
+        .encode(
+            x=alt.X("x_orig:Q", scale=alt.Scale(domain=[-_vmax, _vmax])),
+            y=alt.Y("y_orig:Q", scale=alt.Scale(domain=[-_vmax, _vmax])),
+            tooltip=["word"],
+        )
+    )
+    _pts_new = (
+        alt.Chart(_df_vis)
+        .mark_circle(size=100, color="#ff7f0e")
+        .encode(
+            x=alt.X("x_new:Q", scale=alt.Scale(domain=[-_vmax, _vmax])),
+            y=alt.Y("y_new:Q", scale=alt.Scale(domain=[-_vmax, _vmax])),
+            tooltip=["word"],
+        )
+    )
+    _labels = (
+        alt.Chart(_df_vis)
+        .mark_text(align="left", dx=10, dy=-5, fontSize=14)
+        .encode(x="x_new:Q", y="y_new:Q", text="word")
+    )
+
+    _chart = (_arrows + _pts_orig + _pts_new + _labels).properties(
+        width=400, height=400, title="Original (gray) + Attention correction (orange)"
+    )
+
+    mo.vstack(
+        [
+            _chart,
+            mo.md(
+                "Notice the corrections are small shifts. The residual connection preserves most of the original signal while nudging words toward more contextual positions."
+            ),
+        ],
+        align="center",
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        """
+        This framing explains why transformers can stack dozens of layers. Each layer makes a small adjustment. Without residual connections, information would degrade after just a few layers.
+
+        It also helps gradients flow during training -- the addition operation creates a direct path for gradients to travel backward through many layers.
+        """
+    )
+    return
+
+
+# --- Section 6: Masked Attention -- Causal Models ---
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+        ## Masked Attention -- Causal Models
+
+        When generating text, the model produces one word at a time. At each step, it should only attend to words that came *before* -- never peek ahead.
+
+        Consider translating "I love you" to "Je t'aime." When predicting "t'", the model can see "Je" but not "aime." We enforce this with a mask.
+        """
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+        We set attention scores for future positions to $-\infty$ before softmax, which zeros them out. This creates a lower-triangular attention matrix -- each token only attends to itself and earlier tokens.
+        """
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(apply_causal_mask, en_embeddings, en_words, heatmap, mo, np):
+    np.random.seed(42)
+    _W_q = np.random.randn(2, 2) * 0.5
+    _W_k = np.random.randn(2, 2) * 0.5
+
+    _Q = en_embeddings @ _W_q
+    _K = en_embeddings @ _W_k
+    _scores = _Q @ _K.T / np.sqrt(2)
+
+    # Unmasked
+    _exp = np.exp(_scores - np.max(_scores, axis=1, keepdims=True))
+    _attn_unmasked = _exp / _exp.sum(axis=1, keepdims=True)
+
+    # Masked
+    _attn_masked = apply_causal_mask(_scores)
+
+    _chart_unmasked = heatmap(
+        _attn_unmasked, tick_labels=en_words, title="Unmasked", width=250, height=250, vmin=0, vmax=1
+    )
+    _chart_masked = heatmap(
+        _attn_masked, tick_labels=en_words, title="Masked (causal)", width=250, height=250, vmin=0, vmax=1
+    )
+
+    mo.vstack(
+        [
+            mo.ui.tabs({"Unmasked": _chart_unmasked, "Masked (causal)": _chart_masked}),
+        ],
+        align="center",
+    )
+    return
+
+
+# --- Section 7: Cross-Attention ---
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        """
+        ## Cross-Attention
+
+        In self-attention, Q, K, and V all come from the same sequence. In cross-attention, the query comes from one sequence while keys and values come from another.
+
+        This is how a translation model connects its understanding of the source language to the target it is generating.
+
+        ![](https://skojaku.github.io/applied-soft-comp/_images/transformer-cross-attention.jpg)
+        """
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(en_embeddings, en_words, fr_embeddings, fr_words, heatmap, mo, np):
+    np.random.seed(7)
+    _W_q_cross = np.random.randn(2, 2) * 0.6
+    _W_k_cross = np.random.randn(2, 2) * 0.6
+
+    _Q_fr = fr_embeddings @ _W_q_cross
+    _K_en = en_embeddings @ _W_k_cross
+
+    _scores_cross = _Q_fr @ _K_en.T / np.sqrt(2)
+    _exp_cross = np.exp(_scores_cross - np.max(_scores_cross, axis=1, keepdims=True))
+    _attn_cross = _exp_cross / _exp_cross.sum(axis=1, keepdims=True)
+
+    _chart_cross = heatmap(
+        _attn_cross,
+        tick_labels=en_words,
+        title="Cross-attention (French -> English)",
+        width=280,
+        height=280,
+        vmin=0,
+        vmax=1,
+    )
+
+    # Relabel rows for French words
+    _data = []
+    for i in range(len(fr_words)):
+        for j in range(len(en_words)):
+            _data.append({"French": fr_words[i], "English": en_words[j], "value": _attn_cross[i, j]})
+    import altair as alt
+    import pandas as pd
+
+    _df_cross = pd.DataFrame(_data)
+    _base = (
+        alt.Chart(_df_cross)
+        .mark_rect(strokeWidth=1, stroke="white")
+        .encode(
+            x=alt.X("English:N", title="English (K)", sort=en_words),
+            y=alt.Y("French:N", title="French (Q)", sort=fr_words),
+            color=alt.Color("value:Q", scale=alt.Scale(domain=[0, 1], scheme="inferno")),
+        )
+    )
+    _text = (
+        alt.Chart(_df_cross)
+        .mark_text(baseline="middle")
+        .encode(
+            x=alt.X("English:N", sort=en_words),
+            y=alt.Y("French:N", sort=fr_words),
+            text=alt.Text("value:Q", format=".2f"),
+            color=alt.condition(alt.datum.value < 0.5, alt.value("white"), alt.value("black")),
+        )
+    )
+    _cross_chart = (_base + _text).properties(width=280, height=200, title="Cross-attention")
+
+    mo.vstack(
+        [
+            _cross_chart,
+            mo.md(
+                'Each French word "asks" (via Q) which English words are most relevant. The encoder "answers" (via K).'
+            ),
+        ],
+        align="center",
+    )
+    return
+
+
+# --- Section 8: Putting It Together ---
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        """
+        ## Putting It Together
+
+        Here is the full transformer architecture. Input embeddings are combined with positional encodings, then passed through repeated blocks of multi-head self-attention, add-and-norm, and feed-forward layers.
+
+        ![](https://d2l.ai/_images/transformer.svg)
+
+        Variants include encoder-only (BERT), decoder-only (GPT), and encoder-decoder (the original Transformer, T5).
+        """
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+        ### Layer Normalization
+
+        Layer normalization rescales each token vector to have zero mean and unit variance, then applies learnable parameters:
+
+        $$
+        \text{LN}(x) = \gamma \cdot \frac{x - \mu}{\sqrt{\sigma^2 + \epsilon}} + \beta
+        $$
+
+        This prevents signals from growing or shrinking as they pass through many layers.
+        """
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    position_slider = mo.ui.slider(2, 30, 1, value=10, label="Number of positions")
+    d_model_slider = mo.ui.slider(2, 100, 1, value=2, label="Embedding dimension")
+    return d_model_slider, position_slider
+
+
+@app.cell(hide_code=True)
+def _(alt, d_model_slider, get_positional_encoding, mo, np, pd, position_slider):
+    _seq_len = position_slider.value
+    _d_model = d_model_slider.value
+    _pos_enc = get_positional_encoding(_seq_len, _d_model)
+
+    # Spiral plot (first 2 dims)
+    _df_spiral = pd.DataFrame(
+        {
+            "position": list(range(_seq_len)),
+            "x": _pos_enc[:, 0],
+            "y": _pos_enc[:, 1] if _d_model >= 2 else np.zeros(_seq_len),
+        }
+    )
+
+    _scatter = (
+        alt.Chart(_df_spiral)
+        .mark_circle(size=100)
+        .encode(
+            x=alt.X("x", scale=alt.Scale(domain=[-1.1, 1.1])),
+            y=alt.Y("y", scale=alt.Scale(domain=[-1.1, 1.1])),
+            color=alt.Color("position:O", scale=alt.Scale(scheme="viridis")),
+            tooltip=["position", "x", "y"],
+        )
+    )
+    _line = (
+        alt.Chart(_df_spiral)
+        .mark_line(opacity=0.3, color="gray")
+        .encode(x="x", y="y", order="position")
+    )
+    _spiral_chart = (_scatter + _line).properties(
+        width=300, height=300, title="Positional Encoding (first 2 dims)"
+    )
+
+    # Similarity heatmap
+    _sim = _pos_enc @ _pos_enc.T
+    _sim_data = []
+    for i in range(_seq_len):
+        for j in range(_seq_len):
+            _sim_data.append({"pos_i": i, "pos_j": j, "similarity": _sim[i, j]})
+    _sim_df = pd.DataFrame(_sim_data)
+
+    _sim_chart = (
+        alt.Chart(_sim_df)
+        .mark_rect()
+        .encode(
+            x=alt.X("pos_i:O", title="Position i"),
+            y=alt.Y("pos_j:O", title="Position j"),
+            color=alt.Color("similarity:Q", scale=alt.Scale(scheme="viridis")),
+            tooltip=["pos_i", "pos_j", "similarity"],
+        )
+        .properties(width=250, height=250, title="Position similarity")
+    )
+
+    mo.vstack(
+        [
+            mo.md(
+                r"""
+                ### Positional Encoding
+
+                Attention treats input as a set -- it has no notion of word order. Positional encoding adds position information to each token embedding.
+
+                $$
+                PE_{(pos,2i)} = \sin\!\left(\frac{pos}{10000^{2i/d}}\right), \quad PE_{(pos,2i+1)} = \cos\!\left(\frac{pos}{10000^{2i/d}}\right)
+                $$
+                """
+            ),
+            mo.hstack([position_slider, d_model_slider]),
+            mo.hstack([_spiral_chart, _sim_chart], align="center"),
+        ],
+        align="center",
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        """
+        ## Further Readings
+
+        - [Attention is All You Need](https://arxiv.org/abs/1706.03762)
+        - [3Blue1Brown - Visualizing Attention](https://www.3blue1brown.com/lessons/attention)
+        - [Transformer Explainer](https://poloclub.github.io/transformer-explainer/)
+        - [The Annotated Transformer](https://nlp.seas.harvard.edu/2018/04/03/attention.html)
+        - [You could have designed state of the art positional encoding](https://huggingface.co/blog/designing-positional-encoding)
+        """
+    )
+    return
+
+
+if __name__ == "__main__":
+    app.run()
