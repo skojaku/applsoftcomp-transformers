@@ -442,19 +442,28 @@ def _(mo):
     mo.md(r"""
     ## The Full Picture -- QKV
 
-    We have one more neural network: the value transformation. It produces the vectors that actually get averaged.
-
-    Query and Key decide *how much* each word attends. Value decides *what* gets mixed.
+    Remember the weighted average from the beginning?
 
     $$
-    \text{Attention}(Q,K,V) = \text{softmax}\!\left(\frac{QK^\top}{\sqrt{d}}\right) \cdot V
+    v_{\text{bank}}^{\text{new}} = w_1 \, v_{\text{bank}} + w_2 \, v_{\text{money}} + \cdots
     $$
+
+    Back then, we set the weights by hand. Now we have all the pieces to compute them automatically:
+
+    1. **Query and Key** decide the weights -- how much each word attends to every other word.
+    2. **Value** decides what gets mixed -- the vectors that actually get averaged.
+
+    $$
+    \text{Attention}(Q,K,V) = \underbrace{\text{softmax}\!\left(\frac{QK^\top}{\sqrt{d}}\right)}_{\text{weights (from Q and K)}} \cdot \underbrace{V}_{\text{what to average}}
+    $$
+
+    The output is still a weighted average -- exactly the same operation as before -- but the weights are now *learned* from the data instead of set by hand.
     """)
     return
 
 
 @app.cell(hide_code=True)
-def _(compute_attention, embeddings, heatmap, mo, np, pd, scatter_plot, words):
+def _(compute_attention, embeddings, mo, np, pd, scatter_plot, words):
     # Hardcoded Q/K/V params chosen so "bank" attends to money/loan
     _theta_q = np.radians(30)
     _W_q = 1.2 * np.array(
@@ -484,10 +493,7 @@ def _(compute_attention, embeddings, heatmap, mo, np, pd, scatter_plot, words):
     _df_out = pd.DataFrame({"word": words, "x": qkv_output[:, 0], "y": qkv_output[:, 1]})
     _df_orig = pd.DataFrame({"word": words, "x": embeddings[:, 0], "y": embeddings[:, 1]})
 
-    _chart_attn = heatmap(
-        attn_weights, tick_labels=words, title="Attention weights", width=280, height=280, vmin=0, vmax=1
-    )
-    _chart_out = scatter_plot(_df_out, _df_orig, title="Attention output", width=300, height=300)
+    _chart_out = scatter_plot(_df_out, _df_orig, title="Attention output", width=400, height=400)
 
     _eq = (
         r"$v_{\text{bank}}^{\text{out}} = "
@@ -500,7 +506,7 @@ def _(compute_attention, embeddings, heatmap, mo, np, pd, scatter_plot, words):
 
     mo.vstack(
         [
-            mo.hstack([_chart_attn, _chart_out], align="center"),
+            _chart_out,
             mo.md(_eq),
         ],
         align="center",
