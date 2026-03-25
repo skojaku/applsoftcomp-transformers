@@ -511,7 +511,7 @@ def _(compute_attention, embeddings, mo, np, pd, scatter_plot, words):
         ],
         align="center",
     )
-    return (qkv_output,)
+    return
 
 
 @app.cell(hide_code=True)
@@ -553,75 +553,6 @@ def _(mo):
 
     ![ResBlock](https://upload.wikimedia.org/wikipedia/commons/b/ba/ResBlock.png)
     """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(alt, embeddings, mo, np, pd, qkv_output, words):
-    # Residual = original + attention correction
-    _correction = qkv_output - embeddings  # the "residual" that attention adds
-    _residual_output = embeddings + _correction  # same as qkv_output, but framed as x + f(x)
-
-    _df_vis = pd.DataFrame(
-        {
-            "word": words,
-            "x_orig": embeddings[:, 0],
-            "y_orig": embeddings[:, 1],
-            "x_new": _residual_output[:, 0],
-            "y_new": _residual_output[:, 1],
-        }
-    )
-
-    _vmax = np.max(np.abs(np.concatenate([embeddings, _residual_output]))) + 0.5
-
-    _arrows = (
-        alt.Chart(_df_vis)
-        .mark_rule(strokeWidth=1.5)
-        .encode(
-            x=alt.X("x_orig:Q", scale=alt.Scale(domain=[-_vmax, _vmax])),
-            y=alt.Y("y_orig:Q", scale=alt.Scale(domain=[-_vmax, _vmax])),
-            x2="x_new:Q",
-            y2="y_new:Q",
-            color=alt.value("#999"),
-        )
-    )
-    _pts_orig = (
-        alt.Chart(_df_vis)
-        .mark_circle(size=100, color="#dadada")
-        .encode(
-            x=alt.X("x_orig:Q", scale=alt.Scale(domain=[-_vmax, _vmax])),
-            y=alt.Y("y_orig:Q", scale=alt.Scale(domain=[-_vmax, _vmax])),
-            tooltip=["word"],
-        )
-    )
-    _pts_new = (
-        alt.Chart(_df_vis)
-        .mark_circle(size=100, color="#ff7f0e")
-        .encode(
-            x=alt.X("x_new:Q", scale=alt.Scale(domain=[-_vmax, _vmax])),
-            y=alt.Y("y_new:Q", scale=alt.Scale(domain=[-_vmax, _vmax])),
-            tooltip=["word"],
-        )
-    )
-    _labels = (
-        alt.Chart(_df_vis)
-        .mark_text(align="left", dx=10, dy=-5, fontSize=14)
-        .encode(x="x_new:Q", y="y_new:Q", text="word")
-    )
-
-    _chart = (_arrows + _pts_orig + _pts_new + _labels).properties(
-        width=400, height=400, title="Original (gray) + Attention correction (orange)"
-    )
-
-    mo.vstack(
-        [
-            _chart,
-            mo.md(
-                "Notice the corrections are small shifts. The residual connection preserves most of the original signal while nudging words toward more contextual positions."
-            ),
-        ],
-        align="center",
-    )
     return
 
 
