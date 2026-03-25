@@ -266,7 +266,18 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(embeddings, mo, np, pd, scatter_plot, slider_loan, slider_money, slider_river, slider_shore, words):
+def _(
+    embeddings,
+    mo,
+    np,
+    pd,
+    scatter_plot,
+    slider_loan,
+    slider_money,
+    slider_river,
+    slider_shore,
+    words,
+):
     _raw = np.array(
         [1.0, slider_money.value, slider_loan.value, slider_river.value, slider_shore.value]
     )
@@ -371,7 +382,21 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(compute_attention, emb2df, embeddings, heatmap, k_bias, k_rotation, k_scale, mo, q_bias, q_rotation, q_scale, scatter_plot, words):
+def _(
+    compute_attention,
+    emb2df,
+    embeddings,
+    heatmap,
+    k_bias,
+    k_rotation,
+    k_scale,
+    mo,
+    q_bias,
+    q_rotation,
+    q_scale,
+    scatter_plot,
+    words,
+):
     _orig_q, _tf_q, _W_q, _b_q = emb2df(
         words, embeddings, q_scale.value, q_rotation.value, q_bias.value
     )
@@ -664,65 +689,78 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(alt, en_embeddings, en_words, fr_embeddings, fr_words, heatmap, mo, np, pd):
-    np.random.seed(7)
-    _W_q_cross = np.random.randn(2, 2) * 0.6
-    _W_k_cross = np.random.randn(2, 2) * 0.6
+def _(
+    alt,
+    en_embeddings,
+    en_words,
+    fr_embeddings,
+    fr_words,
+    heatmap,
+    mo,
+    np,
+    pd,
+):
+    def _():
+        np.random.seed(7)
+        _W_q_cross = np.random.randn(2, 2) * 0.6
+        _W_k_cross = np.random.randn(2, 2) * 0.6
 
-    _Q_fr = fr_embeddings @ _W_q_cross
-    _K_en = en_embeddings @ _W_k_cross
+        _Q_fr = fr_embeddings @ _W_q_cross
+        _K_en = en_embeddings @ _W_k_cross
 
-    _scores_cross = _Q_fr @ _K_en.T / np.sqrt(2)
-    _exp_cross = np.exp(_scores_cross - np.max(_scores_cross, axis=1, keepdims=True))
-    _attn_cross = _exp_cross / _exp_cross.sum(axis=1, keepdims=True)
+        _scores_cross = _Q_fr @ _K_en.T / np.sqrt(2)
+        _exp_cross = np.exp(_scores_cross - np.max(_scores_cross, axis=1, keepdims=True))
+        _attn_cross = _exp_cross / _exp_cross.sum(axis=1, keepdims=True)
 
-    _chart_cross = heatmap(
-        _attn_cross,
-        tick_labels=en_words,
-        title="Cross-attention (French -> English)",
-        width=280,
-        height=280,
-        vmin=0,
-        vmax=1,
-    )
-
-    # Relabel rows for French words
-    _data = []
-    for i in range(len(fr_words)):
-        for j in range(len(en_words)):
-            _data.append({"French": fr_words[i], "English": en_words[j], "value": _attn_cross[i, j]})
-
-    _df_cross = pd.DataFrame(_data)
-    _base = (
-        alt.Chart(_df_cross)
-        .mark_rect(strokeWidth=1, stroke="white")
-        .encode(
-            x=alt.X("English:N", title="English (K)", sort=en_words),
-            y=alt.Y("French:N", title="French (Q)", sort=fr_words),
-            color=alt.Color("value:Q", scale=alt.Scale(domain=[0, 1], scheme="inferno")),
+        _chart_cross = heatmap(
+            _attn_cross,
+            tick_labels=en_words,
+            title="Cross-attention (French -> English)",
+            width=280,
+            height=280,
+            vmin=0,
+            vmax=1,
         )
-    )
-    _text = (
-        alt.Chart(_df_cross)
-        .mark_text(baseline="middle")
-        .encode(
-            x=alt.X("English:N", sort=en_words),
-            y=alt.Y("French:N", sort=fr_words),
-            text=alt.Text("value:Q", format=".2f"),
-            color=alt.condition(alt.datum.value < 0.5, alt.value("white"), alt.value("black")),
-        )
-    )
-    _cross_chart = (_base + _text).properties(width=280, height=200, title="Cross-attention")
 
-    mo.vstack(
-        [
-            _cross_chart,
-            mo.md(
-                'Each French word "asks" (via Q) which English words are most relevant. The encoder "answers" (via K).'
-            ),
-        ],
-        align="center",
-    )
+        # Relabel rows for French words
+        _data = []
+        for i in range(len(fr_words)):
+            for j in range(len(en_words)):
+                _data.append({"French": fr_words[i], "English": en_words[j], "value": _attn_cross[i, j]})
+
+        _df_cross = pd.DataFrame(_data)
+        _base = (
+            alt.Chart(_df_cross)
+            .mark_rect(strokeWidth=1, stroke="white")
+            .encode(
+                x=alt.X("English:N", title="English (K)", sort=en_words),
+                y=alt.Y("French:N", title="French (Q)", sort=fr_words),
+                color=alt.Color("value:Q", scale=alt.Scale(domain=[0, 1], scheme="inferno")),
+            )
+        )
+        _text = (
+            alt.Chart(_df_cross)
+            .mark_text(baseline="middle")
+            .encode(
+                x=alt.X("English:N", sort=en_words),
+                y=alt.Y("French:N", sort=fr_words),
+                text=alt.Text("value:Q", format=".2f"),
+                color=alt.condition(alt.datum.value < 0.5, alt.value("white"), alt.value("black")),
+            )
+        )
+        _cross_chart = (_base + _text).properties(width=280, height=200, title="Cross-attention")
+        return mo.vstack(
+            [
+                _cross_chart,
+                mo.md(
+                    'Each French word "asks" (via Q) which English words are most relevant. The encoder "answers" (via K).'
+                ),
+            ],
+            align="center",
+        )
+
+
+    _()
     return
 
 
@@ -808,9 +846,9 @@ def _(
     # Similarity heatmap
     _sim = _pos_enc @ _pos_enc.T
     _sim_data = []
-    for i in range(_seq_len):
-        for j in range(_seq_len):
-            _sim_data.append({"pos_i": i, "pos_j": j, "similarity": _sim[i, j]})
+    for _i in range(_seq_len):
+        for _j in range(_seq_len):
+            _sim_data.append({"pos_i": _i, "pos_j": _j, "similarity": _sim[_i, _j]})
     _sim_df = pd.DataFrame(_sim_data)
 
     _sim_chart = (
