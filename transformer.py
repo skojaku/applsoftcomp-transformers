@@ -11,7 +11,7 @@
 import marimo
 
 __generated_with = "0.21.1"
-app = marimo.App(width="medium", css_file="../applsoftcomp-word2vec/marimo_lecture_note_theme.css")
+app = marimo.App(width="medium", css_file="marimo_lecture_note_theme.css")
 
 
 @app.cell(hide_code=True)
