@@ -900,6 +900,12 @@ def _(wsd_train_data):
 
 
 @app.cell(hide_code=True)
+def _(mo):
+    slider_bert_layer = mo.ui.slider(0, 12, 1, 4, label="Layer to use")
+    return (slider_bert_layer,)
+
+
+@app.cell(hide_code=True)
 def _(mo, slider_bert_layer):
     return mo.vstack([
         mo.md("Choose the layer for the embedding, and see how the embedding changes."),
@@ -1275,13 +1281,12 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo):
-    slider_bert_layer = mo.ui.slider(0, 12, 1, 4, label="Layer to use")
     noun_placeholder = mo.ui.text(
         value="banana",
         label="When asked about its color, {object} is described as [MASK].",
         full_width=True,
     )
-    return noun_placeholder, slider_bert_layer
+    return (noun_placeholder,)
 
 
 if __name__ == "__main__":
