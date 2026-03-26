@@ -397,11 +397,21 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
+def _(Path, mo):
+    mo.center(mo.image(src=Path("figs/residual-stream.png"), alt="Residual-Stream", width="60%"))
+    return
+
+
+@app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    This framing explains why transformers can stack dozens of layers. Each layer makes a small adjustment. Without residual connections, information would degrade after just a few layers.
+    While it appears to be a trivial architecture, this residual connection is the key that enables deep transformers. Without it, the model takes substantially longer to learn well.
 
-    It also helps gradients flow during training. The addition operation creates a direct path for gradients to travel backward through many layers.
+    The intuition underlying the effectiveness of the residual connection is the following.
+
+    When we stack multiple transformers on top of each other and train it, the final layer, which produces the output of the model, gets the strongest supervision signal since it is directly connected to the loss function. The earlier layers get weaker and weaker supervision signals as we go down the stack, because they are further away from the output.
+
+    The residual connection basically connects the input and output by making a shortcut, effectively making the model shallw in depth. The supervision signal reach earlier layers more directly through this short cut, and even if the attention layer in an early block is not yet well-trained, the residual connection allows the original input to pass through, preventing the signal from vanishing and enabling effective learning across all layers.
     """)
     return
 
@@ -656,7 +666,7 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(Path, mo):
-    mo.center(mo.image(src=Path("figs/bert-architecture.webp"), alt="BERT architecture", width="100%"))
+    mo.center(mo.image(src=Path("figs/bert-architecture.webp"), alt="BERT architecture", width="30%"))
     return
 
 
@@ -685,8 +695,11 @@ def _(mo):
 def _(mo):
     from transformers import AutoTokenizer, AutoModel
 
+    # Load the tokenizer (converts text to token IDs) and model
     bert_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
     bert_model = AutoModel.from_pretrained("bert-base-uncased")
+
+    # Switch to evaluation mode (disables dropout, etc.)
     bert_model = bert_model.eval()
     mo.output.replace(mo.show_code())
     return bert_model, bert_tokenizer
@@ -710,7 +723,10 @@ def _(mo):
 def _(bert_tokenizer, mo):
     text = "Binghamton University"
 
+    # Break text into subword tokens
     tokens = bert_tokenizer.tokenize(text, add_special_tokens=True)
+
+    # Map each token to its integer ID in BERT's vocabulary
     token_ids = bert_tokenizer.convert_tokens_to_ids(tokens)
 
     print(f"Text: '{text}'")
@@ -734,7 +750,10 @@ def _(mo):
 def _(bert_model, mo, token_ids):
     import torch
 
+    # Wrap token IDs in a tensor with batch dimension [1, seq_len]
     token_ids_tensor = torch.tensor([token_ids])
+
+    # Run through BERT; output_hidden_states=True returns embeddings from all 13 layers
     bert_outputs = bert_model(token_ids_tensor, output_hidden_states=True)
     mo.output.replace(mo.show_code())
     return bert_outputs, torch
@@ -770,8 +789,9 @@ def _(mo):
 
 @app.cell
 def _(bert_outputs, mo):
+    # hidden_states[-1] is the output of the last (12th) transformer layer
     bert_last_hidden_state = bert_outputs.hidden_states[-1]
-    print(f"Shape: {bert_last_hidden_state.shape}")
+    print(f"Shape: {bert_last_hidden_state.shape}")  # (batch_size, seq_len, 768)
     mo.output.replace(mo.show_code())
     return (bert_last_hidden_state,)
 
@@ -786,9 +806,10 @@ def _(mo):
 
 @app.cell
 def _(bert_last_hidden_state):
+    # Pick the 4th token (index 3) from the first sentence in the batch
     token_position = 3
     token_embedding = bert_last_hidden_state[0, token_position, :]
-    print(token_embedding[:10])
+    print(token_embedding[:10])  # first 10 of 768 dimensions
     return
 
 
@@ -805,34 +826,35 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _():
-    return
-
-
-@app.cell
-def _():
+def _(Path, mo):
+    mo.center(mo.image(src=Path("figs/padding-attention-mask.png"), alt="Padding and attention mask", width="80%"))
     return
 
 
 @app.cell
 def _(bert_tokenizer, mo):
+    # Two sentences with different lengths
     bert_text1 = "Binghamton University"
     bert_text2 = "State University of New York"
 
+    # Tokenize each sentence separately to see the length difference
     tokens1 = bert_tokenizer.tokenize(bert_text1, add_special_tokens=True)
     tokens2 = bert_tokenizer.tokenize(bert_text2, add_special_tokens=True)
 
     token_ids1 = bert_tokenizer.convert_tokens_to_ids(tokens1)
     token_ids2 = bert_tokenizer.convert_tokens_to_ids(tokens2)
 
-    print(f"Token IDs of text1: {token_ids1}")
-    print(f"Token IDs of text2: {token_ids2}")
+    print(f"Token IDs of text1: {token_ids1}")  # shorter
+    print(f"Token IDs of text2: {token_ids2}")  # longer
     mo.output.replace(mo.show_code())
     return bert_text1, bert_text2
 
 
 @app.cell
 def _(bert_text1, bert_text2, bert_tokenizer, mo):
+    # Tokenize both sentences at once with automatic padding
+    # padding=True pads the shorter sentence with [PAD] tokens
+    # return_attention_mask=True generates a mask (1 = real token, 0 = padding)
     bert_inputs = bert_tokenizer(
         [bert_text1, bert_text2],
         add_special_tokens=True,
@@ -856,9 +878,10 @@ def _(mo):
 
 @app.cell
 def _(bert_inputs, bert_model):
+    # Feed the padded batch into BERT; the attention mask ensures padding is ignored
     bert_outputs_batch = bert_model(**bert_inputs, output_hidden_states=True)
     bert_last_hidden_batch = bert_outputs_batch.hidden_states[-1]
-    print(f"Last hidden state batch shape: {bert_last_hidden_batch.shape}")
+    print(f"Last hidden state batch shape: {bert_last_hidden_batch.shape}")  # (2, seq_len, 768)
     return
 
 
@@ -919,12 +942,13 @@ def _(bert_model, bert_tokenizer, mo, torch, wsd_train_data):
     _batch_size = 128
     wsd_all_labels = []
     wsd_all_sentences = []
-    wsd_all_embeddings = defaultdict(list)
+    wsd_all_embeddings = defaultdict(list)  # layer_id -> list of embeddings
 
+    # Process sentences in batches for efficiency
     for _i in range(0, len(wsd_train_data), _batch_size):
         _batch = wsd_train_data.iloc[_i : _i + _batch_size]
         _batch_sentences = _batch["sentence"].tolist()
-        _batch_focal_indices = _batch["word_pos"].tolist()
+        _batch_focal_indices = _batch["word_pos"].tolist()  # position of the polysemous word
         _batch_labels = _batch["label"].tolist()
 
         _encoded = bert_tokenizer(
@@ -933,6 +957,7 @@ def _(bert_model, bert_tokenizer, mo, torch, wsd_train_data):
         )
         _out = bert_model(**_encoded, output_hidden_states=True)
 
+        # Extract the embedding of the focal word at every layer
         for _layer_id in range(len(_out.hidden_states)):
             _focal_embs = [
                 _out.hidden_states[_layer_id][_idx, _focal_pos, :]
@@ -943,6 +968,7 @@ def _(bert_model, bert_tokenizer, mo, torch, wsd_train_data):
         wsd_all_labels = wsd_all_labels + _batch_labels
         wsd_all_sentences = wsd_all_sentences + _batch_sentences
 
+    # Stack into numpy arrays for PCA later
     for _layer_id in wsd_all_embeddings.keys():
         wsd_all_embeddings[_layer_id] = (
             torch.vstack(wsd_all_embeddings[_layer_id]).detach().numpy()
@@ -1024,13 +1050,17 @@ def _():
 @app.cell
 def _(bert_masked_lm, bert_tokenizer, mo, torch):
     def predict_masked_word(template, object_name, top_k=5):
+        """Fill in the [MASK] token and return the top-k predicted words."""
         _text = template.format(object=object_name)
         _inputs = bert_tokenizer(_text, return_tensors="pt")
+
+        # Find the position of the [MASK] token
         _mask_idx = torch.where(_inputs["input_ids"] == bert_tokenizer.mask_token_id)[1]
 
         with torch.no_grad():
             _outputs = bert_masked_lm(**_inputs)
 
+        # Get the logits at the [MASK] position and pick the top-k predictions
         _logits = _outputs.logits
         _mask_logits = _logits[0, _mask_idx, :]
         _top_k_ids = torch.topk(_mask_logits, top_k, dim=1).indices[0].tolist()
@@ -1039,6 +1069,11 @@ def _(bert_masked_lm, bert_tokenizer, mo, torch):
 
     mo.output.replace(mo.show_code())
     return (predict_masked_word,)
+
+
+@app.cell
+def _():
+    return
 
 
 @app.cell(hide_code=True)
