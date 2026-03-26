@@ -29,7 +29,10 @@ def _(mo):
 
     ## Attention as Weighted Average
 
-    Consider the word "bank." A static embedding gives it one fixed position, but its meaning shifts depending on context. Is it a financial institution or the side of a river?
+    Word "bank" is a polysemy. It means a financial institution or the side of a river. It depends on the context.
+
+    Many languages are  contextual.
+
 
     We need a way to let surrounding words influence the meaning of "bank."
     """)
@@ -37,16 +40,9 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(embeddings, pd, scatter_plot, words):
-    _df = pd.DataFrame({"word": words, "x": embeddings[:, 0], "y": embeddings[:, 1]})
-    _chart = scatter_plot(_df, _df, title="Static Word Embeddings", width=400, height=400)
-    return
-
-
-@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    The simplest idea: compute a weighted average of all word vectors in the sentence.
+    A simple idea is to compute a weighted average of all word vectors in the sentence.
 
     $$
     v_{\text{bank}}^{\text{new}} = a_1 \, v_{\text{bank}} + a_2 \, v_{\text{money}} + a_3 \, v_{\text{loan}} + a_4 \, v_{\text{river}} + a_5 \, v_{\text{shore}}
@@ -696,8 +692,10 @@ def _(mo):
     from transformers import AutoTokenizer, AutoModel
 
     # Load the tokenizer (converts text to token IDs) and model
-    bert_tokenizer = AutoTokenizer.from_pretrained("prajjwal1/bert-small")
-    bert_model = AutoModel.from_pretrained("prajjwal1/bert-small")
+    # Using Google's small BERT: 4 layers, 512 hidden dim, 8 attention heads (~29MB)
+    _model_name = "google/bert_uncased_L-4_H-512_A-8"
+    bert_tokenizer = AutoTokenizer.from_pretrained(_model_name)
+    bert_model = AutoModel.from_pretrained(_model_name)
 
     # Switch to evaluation mode (disables dropout, etc.)
     bert_model = bert_model.eval()
@@ -1039,6 +1037,13 @@ def _():
     from pathlib import Path
 
     return Path, alt, mo, np, pd
+
+
+@app.cell(hide_code=True)
+def _(embeddings, pd, scatter_plot, words):
+    _df = pd.DataFrame({"word": words, "x": embeddings[:, 0], "y": embeddings[:, 1]})
+    _chart = scatter_plot(_df, _df, title="Static Word Embeddings", width=400, height=400)
+    return
 
 
 @app.cell(hide_code=True)
