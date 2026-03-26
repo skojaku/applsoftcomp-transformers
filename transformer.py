@@ -254,62 +254,13 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Masked Attention: Causal Models
+    ## Variations of Attention
 
-    When generating text, the model produces one word at a time. At each step, it should only attend to words that came *before*. It must never peek ahead.
+    So far, every token attends to every other token (self-attention). Two important variations change *who* can attend to *whom*.
 
-    Consider translating "I love you" to "Je t'aime." When predicting "t'", the model can see "Je" but not "aime." We enforce this with a mask.
-    """)
-    return
+    **Masked (causal) attention.** When generating text, the model produces one token at a time and must never peek ahead. We set attention scores for future positions to $-\infty$ before softmax, which zeros them out. This creates a lower-triangular attention matrix where each token only attends to itself and earlier tokens.
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    We set attention scores for future positions to $-\infty$ before softmax, which zeros them out. This creates a lower-triangular attention matrix where each token only attends to itself and earlier tokens.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(apply_causal_mask, en_embeddings, en_words, heatmap, mo, np):
-    np.random.seed(42)
-    _W_q = np.random.randn(2, 2) * 0.5
-    _W_k = np.random.randn(2, 2) * 0.5
-
-    _Q = en_embeddings @ _W_q
-    _K = en_embeddings @ _W_k
-    _scores = _Q @ _K.T / np.sqrt(2)
-
-    # Unmasked
-    _exp = np.exp(_scores - np.max(_scores, axis=1, keepdims=True))
-    _attn_unmasked = _exp / _exp.sum(axis=1, keepdims=True)
-
-    # Masked
-    _attn_masked = apply_causal_mask(_scores)
-
-    _chart_unmasked = heatmap(_attn_unmasked, tick_labels=en_words, title="Unmasked", width=250, height=250, vmin=0, vmax=1)
-    _chart_masked = heatmap(
-        _attn_masked, tick_labels=en_words, title="Masked (causal)", width=250, height=250, vmin=0, vmax=1
-    )
-
-    mo.vstack(
-        [
-            mo.ui.tabs({"Unmasked": _chart_unmasked, "Masked (causal)": _chart_masked}),
-        ],
-        align="center",
-    )
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
-    ## Cross-Attention
-
-    In self-attention, Q, K, and V all come from the same sequence. In cross-attention, the query comes from one sequence while keys and values come from another.
-
-    This is how a translation model connects its understanding of the source language to the target it is generating.
+    **Cross-attention.** In self-attention, Q, K, and V all come from the same sequence. In cross-attention, the query comes from one sequence while keys and values come from another. This is how a translation model connects its understanding of the source language to the target it is generating.
     """)
     return
 
@@ -317,6 +268,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(
     alt,
+    apply_causal_mask,
     en_embeddings,
     en_words,
     fr_embeddings,
@@ -326,68 +278,70 @@ def _(
     np,
     pd,
 ):
-    def _():
-        # Hand-picked weights so the alignment is clear:
-        # Je -> I, t' -> you, aime -> love
-        _W_q_cross = np.array([[2.0, -0.8], [0.5, 2.5]])
-        _W_k_cross = np.array([[2.2, 0.3], [-0.6, 2.0]])
+    # --- Causal masking ---
+    np.random.seed(42)
+    _W_q = np.random.randn(2, 2) * 0.5
+    _W_k = np.random.randn(2, 2) * 0.5
 
-        _Q_fr = fr_embeddings @ _W_q_cross
-        _K_en = en_embeddings @ _W_k_cross
+    _Q = en_embeddings @ _W_q
+    _K = en_embeddings @ _W_k
+    _scores = _Q @ _K.T / np.sqrt(2)
 
-        _scores_cross = _Q_fr @ _K_en.T / np.sqrt(2)
-        _exp_cross = np.exp(_scores_cross - np.max(_scores_cross, axis=1, keepdims=True))
-        _attn_cross = _exp_cross / _exp_cross.sum(axis=1, keepdims=True)
+    _exp = np.exp(_scores - np.max(_scores, axis=1, keepdims=True))
+    _attn_unmasked = _exp / _exp.sum(axis=1, keepdims=True)
+    _attn_masked = apply_causal_mask(_scores)
 
-        _chart_cross = heatmap(
-            _attn_cross,
-            tick_labels=en_words,
-            title="Cross-attention (French -> English)",
-            width=280,
-            height=280,
-            vmin=0,
-            vmax=1,
+    _chart_unmasked = heatmap(_attn_unmasked, tick_labels=en_words, title="Self-attention (unmasked)", width=250, height=250, vmin=0, vmax=1)
+    _chart_masked = heatmap(_attn_masked, tick_labels=en_words, title="Causal (masked)", width=250, height=250, vmin=0, vmax=1)
+
+    # --- Cross-attention ---
+    _W_q_cross = np.array([[2.0, -0.8], [0.5, 2.5]])
+    _W_k_cross = np.array([[2.2, 0.3], [-0.6, 2.0]])
+
+    _Q_fr = fr_embeddings @ _W_q_cross
+    _K_en = en_embeddings @ _W_k_cross
+
+    _scores_cross = _Q_fr @ _K_en.T / np.sqrt(2)
+    _exp_cross = np.exp(_scores_cross - np.max(_scores_cross, axis=1, keepdims=True))
+    _attn_cross = _exp_cross / _exp_cross.sum(axis=1, keepdims=True)
+
+    _data = []
+    for _i in range(len(fr_words)):
+        for _j in range(len(en_words)):
+            _data.append({"French": fr_words[_i], "English": en_words[_j], "value": _attn_cross[_i, _j]})
+
+    _df_cross = pd.DataFrame(_data)
+    _base = (
+        alt.Chart(_df_cross)
+        .mark_rect(strokeWidth=1, stroke="white")
+        .encode(
+            x=alt.X("English:N", title="English (K)", sort=en_words),
+            y=alt.Y("French:N", title="French (Q)", sort=fr_words),
+            color=alt.Color("value:Q", scale=alt.Scale(domain=[0, 1], scheme="inferno"), legend=None),
         )
-
-        # Relabel rows for French words
-        _data = []
-        for i in range(len(fr_words)):
-            for j in range(len(en_words)):
-                _data.append({"French": fr_words[i], "English": en_words[j], "value": _attn_cross[i, j]})
-
-        _df_cross = pd.DataFrame(_data)
-        _base = (
-            alt.Chart(_df_cross)
-            .mark_rect(strokeWidth=1, stroke="white")
-            .encode(
-                x=alt.X("English:N", title="English (K)", sort=en_words),
-                y=alt.Y("French:N", title="French (Q)", sort=fr_words),
-                color=alt.Color("value:Q", scale=alt.Scale(domain=[0, 1], scheme="inferno")),
-            )
+    )
+    _text = (
+        alt.Chart(_df_cross)
+        .mark_text(baseline="middle")
+        .encode(
+            x=alt.X("English:N", sort=en_words),
+            y=alt.Y("French:N", sort=fr_words),
+            text=alt.Text("value:Q", format=".2f"),
+            color=alt.condition(alt.datum.value < 0.5, alt.value("white"), alt.value("black")),
         )
-        _text = (
-            alt.Chart(_df_cross)
-            .mark_text(baseline="middle")
-            .encode(
-                x=alt.X("English:N", sort=en_words),
-                y=alt.Y("French:N", sort=fr_words),
-                text=alt.Text("value:Q", format=".2f"),
-                color=alt.condition(alt.datum.value < 0.5, alt.value("white"), alt.value("black")),
-            )
-        )
-        _cross_chart = (_base + _text).properties(width=280, height=200, title="Cross-attention")
-        return mo.vstack(
-            [
-                _cross_chart,
-                mo.md(
-                    'Each French word "asks" (via Q) which English words are most relevant. The encoder "answers" (via K).'
-                ),
-            ],
-            align="center",
-        )
+    )
+    _chart_cross = (_base + _text).properties(width=250, height=200, title="Cross-attention (Fr → En)")
 
-
-    _()
+    mo.vstack(
+        [
+            mo.hstack([_chart_masked, _chart_cross], align="center"),
+            mo.md(
+                "**Left:** Causal mask forces each token to only attend to earlier tokens. "
+                "**Right:** Cross-attention lets French tokens query English tokens."
+            ),
+        ],
+        align="center",
+    )
     return
 
 
