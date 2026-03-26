@@ -888,11 +888,10 @@ def _(wsd_train_data):
 
 @app.cell(hide_code=True)
 def _(mo, slider_bert_layer):
-    mo.vstack([
+    return mo.vstack([
         mo.md("Choose the layer for the embedding, and see how the embedding changes."),
         slider_bert_layer,
     ])
-    return
 
 
 @app.cell
