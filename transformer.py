@@ -438,6 +438,110 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Positional Encoding
+
+    Attention treats input as a set with no notion of word order. The sentence "dog bites man" and "man bites dog" would produce the same attention scores. We need to inject position information into each token.
+
+    The simplest idea: add the position number directly to the embedding.
+
+    $$
+    x_i' = x_i + i \quad (i = 0, 1, 2, \ldots)
+    $$
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(heatmap, mo, np, position_slider):
+    _n = position_slider.value
+
+    # --- Attempt 1: integer positions ---
+    _int_enc = np.arange(_n).reshape(-1, 1).astype(float)
+    _int_sim = _int_enc @ _int_enc.T
+    _chart_int = heatmap(
+        _int_sim,
+        tick_labels=[str(_i) for _i in range(_n)],
+        title="Integer encoding: dot products",
+        width=280,
+        height=280,
+    )
+
+    mo.vstack(
+        [
+            mo.hstack([position_slider]),
+            _chart_int,
+            mo.md(
+                r"""
+                The dot product $i \cdot j$ grows with position. Token 20 attending to token 19 gets a score of 380, while token 2 attending to token 1 gets only 2. Later positions dominate attention simply because their numbers are bigger, not because they are more relevant.
+                """
+            ),
+        ],
+        align="center",
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    **Attempt 2: binary encoding.** Represent each position as a binary vector, e.g., position 5 = $(1, 0, 1)$.
+
+    This fixes the magnitude problem since every vector has entries in $\{0, 1\}$, but introduces a new one: the similarity between positions has no smooth structure.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(heatmap, mo, np, position_slider):
+    _n = position_slider.value
+    _bits = max(int(np.ceil(np.log2(_n + 1))), 1)
+    _bin_enc = np.array([list(map(int, format(_i, f'0{_bits}b'))) for _i in range(_n)], dtype=float)
+    _bin_sim = _bin_enc @ _bin_enc.T
+
+    _chart_bin = heatmap(
+        _bin_sim,
+        tick_labels=[str(_i) for _i in range(_n)],
+        title="Binary encoding: dot products",
+        width=280,
+        height=280,
+    )
+
+    mo.vstack(
+        [
+            _chart_bin,
+            mo.md(
+                r"""
+                Positions 4 and 7 (binary $100$ and $111$) have a dot product of 1, while positions 6 and 7 ($110$ and $111$) have a dot product of 2. The similarity pattern is jagged and discontinuous. Nearby positions are not necessarily more similar than distant ones.
+                """
+            ),
+        ],
+        align="center",
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    **What we actually want:**
+    1. Bounded values, so position does not dominate the embedding magnitude.
+    2. Smooth similarity, so nearby positions have similar encodings.
+    3. Unique encoding for every position, even for sequences longer than seen during training.
+
+    The sinusoidal positional encoding achieves all three. Like binary encoding, each dimension oscillates between values, but instead of discrete $\{0,1\}$ it uses continuous sine and cosine waves at different frequencies:
+
+    $$
+    PE_{(pos,2i)} = \sin\!\left(\frac{pos}{10000^{2i/d}}\right), \quad PE_{(pos,2i+1)} = \cos\!\left(\frac{pos}{10000^{2i/d}}\right)
+    $$
+
+    Each dimension is a wave with a different wavelength, ranging from $2\pi$ (fastest) to $10000 \cdot 2\pi$ (slowest). This creates a smooth, bounded encoding where the dot product between two positions depends only on their distance.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
 def _(
     alt,
     d_model_slider,
@@ -471,7 +575,7 @@ def _(
         )
     )
     _line = alt.Chart(_df_spiral).mark_line(opacity=0.3, color="gray").encode(x="x", y="y", order="position")
-    _spiral_chart = (_scatter + _line).properties(width=300, height=300, title="Positional Encoding (first 2 dims)")
+    _spiral_chart = (_scatter + _line).properties(width=300, height=300, title="Sinusoidal encoding (first 2 dims)")
 
     # Similarity heatmap
     _sim = _pos_enc @ _pos_enc.T
@@ -490,24 +594,17 @@ def _(
             color=alt.Color("similarity:Q", scale=alt.Scale(scheme="viridis")),
             tooltip=["pos_i", "pos_j", "similarity"],
         )
-        .properties(width=250, height=250, title="Position similarity")
+        .properties(width=250, height=250, title="Sinusoidal: dot products")
     )
 
     mo.vstack(
         [
-            mo.md(
-                r"""
-                ### Positional Encoding
-
-                Attention treats input as a set with no notion of word order. Positional encoding adds position information to each token embedding.
-
-                $$
-                PE_{(pos,2i)} = \sin\!\left(\frac{pos}{10000^{2i/d}}\right), \quad PE_{(pos,2i+1)} = \cos\!\left(\frac{pos}{10000^{2i/d}}\right)
-                $$
-                """
-            ),
-            mo.hstack([position_slider, d_model_slider]),
+            mo.hstack([d_model_slider]),
             mo.hstack([_spiral_chart, _sim_chart], align="center"),
+            mo.md(
+                "The similarity is highest on the diagonal and decays smoothly with distance. "
+                "Values are bounded between $-1$ and $1$. Every position gets a unique encoding."
+            ),
         ],
         align="center",
     )
