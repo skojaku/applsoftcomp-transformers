@@ -25,7 +25,7 @@ def _(mo):
 
     ## Attention as Weighted Average
 
-    Consider the word "bank." A static embedding gives it one fixed position, but its meaning shifts depending on context -- is it a financial institution or the side of a river?
+    Consider the word "bank." A static embedding gives it one fixed position, but its meaning shifts depending on context. Is it a financial institution or the side of a river?
 
     We need a way to let surrounding words influence the meaning of "bank."
     """)
@@ -253,82 +253,10 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("""
- 
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
     mo.md(r"""
-    ## Multi-Head Attention
+    ## Masked Attention: Causal Models
 
-    A single attention head can only capture one type of relationship. For "bank," one head might learn to attend to financial words, but then it cannot simultaneously attend to geographical words.
-
-    Multi-head attention solves this by running several attention heads in parallel. Here is how it works:
-
-    **1. Split the embedding into sub-vectors.** Each token's $d$-dimensional vector is split into $h$ chunks of size $d/h$. For example, with $d=512$ and $h=8$, each head works with 64-dimensional sub-vectors.
-
-    **2. Each head runs its own attention.** Head $i$ has its own weight matrices ${\bf W}^{(i)}_Q$, ${\bf W}^{(i)}_K$, ${\bf W}^{(i)}_V$ and computes attention independently on its sub-vectors:
-
-    $$
-    \text{head}_i = \text{Attention}({\bf Q}_i, {\bf K}_i, {\bf V}_i)
-    $$
-
-    One head might learn financial associations for "bank," another geographical ones -- each discovers a different pattern without interference.
-
-    **3. Concatenate and project.** The outputs of all heads are concatenated back into a single $d$-dimensional vector and passed through a linear projection:
-
-    $$
-    \text{MultiHead}(Q,K,V) = [\text{head}_1; \text{head}_2; \ldots; \text{head}_h] \, {\bf W}_O
-    $$
-
-    **4. Feed-forward network.** The result is then passed through a two-layer MLP (multilayer perceptron) applied independently to each token:
-
-    $$
-    \text{FFN}(x) = {\bf W}_2 \, \text{ReLU}({\bf W}_1 x + b_1) + b_2
-    $$
-
-    The attention layers move information *between* tokens. The feed-forward layers transform each token's representation *individually* -- adding non-linearity and richer feature combinations that attention alone cannot express.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## The Residual Stream
-
-    Let's step back and look at how attention fits into the bigger picture. In a transformer, there is a central *residual stream* -- a highway that carries information through every layer.
-
-    Each attention layer does not replace the stream. It computes a small correction and *adds* it back:
-
-    $$
-    \text{output} = x + \text{Attention}(x)
-    $$
-
-    The network only needs to learn what is *missing* -- the residual -- not reconstruct everything from scratch.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
-    This framing explains why transformers can stack dozens of layers. Each layer makes a small adjustment. Without residual connections, information would degrade after just a few layers.
-
-    It also helps gradients flow during training -- the addition operation creates a direct path for gradients to travel backward through many layers.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Masked Attention -- Causal Models
-
-    When generating text, the model produces one word at a time. At each step, it should only attend to words that came *before* -- never peek ahead.
+    When generating text, the model produces one word at a time. At each step, it should only attend to words that came *before*. It must never peek ahead.
 
     Consider translating "I love you" to "Je t'aime." When predicting "t'", the model can see "Je" but not "aime." We enforce this with a mask.
     """)
@@ -338,7 +266,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    We set attention scores for future positions to $-\infty$ before softmax, which zeros them out. This creates a lower-triangular attention matrix -- each token only attends to itself and earlier tokens.
+    We set attention scores for future positions to $-\infty$ before softmax, which zeros them out. This creates a lower-triangular attention matrix where each token only attends to itself and earlier tokens.
     """)
     return
 
@@ -465,6 +393,70 @@ def _(
 
 @app.cell(hide_code=True)
 def _(mo):
+    mo.md(r"""
+    ## Multi-Head Attention
+
+    A single attention head can only capture one type of relationship. For "bank," one head might learn to attend to financial words, but then it cannot simultaneously attend to geographical words.
+
+    Multi-head attention solves this by running several attention heads in parallel. Here is how it works:
+
+    **1. Split the embedding into sub-vectors.** Each token's $d$-dimensional vector is split into $h$ chunks of size $d/h$. For example, with $d=512$ and $h=8$, each head works with 64-dimensional sub-vectors.
+
+    **2. Each head runs its own attention.** Head $i$ has its own weight matrices ${\bf W}^{(i)}_Q$, ${\bf W}^{(i)}_K$, ${\bf W}^{(i)}_V$ and computes attention independently on its sub-vectors:
+
+    $$
+    \text{head}_i = \text{Attention}({\bf Q}_i, {\bf K}_i, {\bf V}_i)
+    $$
+
+    One head might learn financial associations for "bank," another geographical ones. Each discovers a different pattern without interference.
+
+    **3. Concatenate and project.** The outputs of all heads are concatenated back into a single $d$-dimensional vector and passed through a linear projection:
+
+    $$
+    \text{MultiHead}(Q,K,V) = [\text{head}_1; \text{head}_2; \ldots; \text{head}_h] \, {\bf W}_O
+    $$
+
+    **4. Feed-forward network.** The result is then passed through a two-layer MLP (multilayer perceptron) applied independently to each token:
+
+    $$
+    \text{FFN}(x) = {\bf W}_2 \, \text{ReLU}({\bf W}_1 x + b_1) + b_2
+    $$
+
+    The attention layers move information *between* tokens. The feed-forward layers transform each token's representation *individually*, adding non-linearity and richer feature combinations that attention alone cannot express.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## The Residual Stream
+
+    Let's step back and look at how attention fits into the bigger picture. In a transformer, there is a central *residual stream*, a highway that carries information through every layer.
+
+    Each attention layer does not replace the stream. It computes a small correction and *adds* it back:
+
+    $$
+    \text{output} = x + \text{Attention}(x)
+    $$
+
+    The network only needs to learn what is *missing*, the residual, not reconstruct everything from scratch.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    This framing explains why transformers can stack dozens of layers. Each layer makes a small adjustment. Without residual connections, information would degrade after just a few layers.
+
+    It also helps gradients flow during training. The addition operation creates a direct path for gradients to travel backward through many layers.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
     mo.md("""
     ## Putting It Together
 
@@ -553,7 +545,7 @@ def _(
                 r"""
                 ### Positional Encoding
 
-                Attention treats input as a set -- it has no notion of word order. Positional encoding adds position information to each token embedding.
+                Attention treats input as a set with no notion of word order. Positional encoding adds position information to each token embedding.
 
                 $$
                 PE_{(pos,2i)} = \sin\!\left(\frac{pos}{10000^{2i/d}}\right), \quad PE_{(pos,2i+1)} = \cos\!\left(\frac{pos}{10000^{2i/d}}\right)
