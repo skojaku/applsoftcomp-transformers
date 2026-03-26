@@ -656,7 +656,8 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(Path, mo):
-    return mo.center(mo.image(src=Path("figs/bert-architecture.png"), alt="BERT architecture"))
+    mo.center(mo.image(src=Path("figs/bert-architecture.webp"), alt="BERT architecture", width="100%"))
+    return
 
 
 @app.cell(hide_code=True)
@@ -804,8 +805,8 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(Path, mo):
-    return mo.center(mo.image(src=Path("figs/padding-attention-mask.png"), alt="Padding and attention mask"))
+def _():
+    return
 
 
 @app.cell
@@ -1008,8 +1009,8 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(Path, mo):
-    return mo.center(mo.image(src=Path("figs/bert-masked-lm.png"), alt="BertForMaskedLM architecture"))
+def _():
+    return
 
 
 @app.cell(hide_code=True)
