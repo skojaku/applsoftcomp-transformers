@@ -415,20 +415,8 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("""
-    ## Putting It Together
-
-    Here is the full transformer architecture. Input embeddings are combined with positional encodings, then passed through repeated blocks of multi-head self-attention, add-and-norm, and feed-forward layers.
-
-    Variants include encoder-only (BERT), decoder-only (GPT), and encoder-decoder (the original Transformer, T5).
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
     mo.md(r"""
-    ### Layer Normalization
+    ## Layer Normalization
 
     Layer normalization rescales each token vector to have zero mean and unit variance, then applies learnable parameters:
 
@@ -437,6 +425,8 @@ def _(mo):
     $$
 
     This prevents signals from growing or shrinking as they pass through many layers.
+
+    > **Note:** The original transformer used Layer Normalization, but modern transformers (e.g., LLaMA, GPT-NeoX) have largely switched to **RMSNorm** (Root Mean Square Layer Normalization). RMSNorm drops the mean-centering step and normalizes by the root mean square alone: $\text{RMSNorm}(x) = \gamma \cdot x / \sqrt{\frac{1}{d}\sum x_i^2 + \epsilon}$. This is simpler, faster, and works just as well in practice.
     """)
     return
 
@@ -444,7 +434,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Positional Encoding
+    ## Positional Encoding
 
     Attention treats input as a set with no notion of word order. The sentence "dog bites man" and "man bites dog" would produce the same attention scores. We need to inject position information into each token.
 
@@ -617,14 +607,27 @@ def _(
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("""
-    ## Further Readings
+    mo.md(r"""
+    > **Note:** Sinusoidal positional encoding was foundational, but modern transformers have moved to **Rotary Position Embeddings (RoPE)**. Instead of adding a position vector to the input, RoPE rotates the query and key vectors by an angle proportional to their position. This encodes *relative* position directly into the attention score, generalizes better to longer sequences, and is now standard in models like LLaMA, Mistral, and GPT-NeoX.
+    """)
+    return
 
-    - [Attention is All You Need](https://arxiv.org/abs/1706.03762)
-    - [3Blue1Brown - Visualizing Attention](https://www.3blue1brown.com/lessons/attention)
-    - [Transformer Explainer](https://poloclub.github.io/transformer-explainer/)
-    - [The Annotated Transformer](https://nlp.seas.harvard.edu/2018/04/03/attention.html)
-    - [You could have designed state of the art positional encoding](https://huggingface.co/blog/designing-positional-encoding)
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ## Putting It Together
+
+    We now have all the building blocks of a transformer:
+
+    - **Attention** computes context-dependent representations by attending to other tokens.
+    - **Multi-head attention** runs several attention heads in parallel, each capturing different relationships.
+    - **Residual connections** add attention outputs back to the original, keeping a stable information highway.
+    - **Layer normalization** keeps activations well-scaled across layers.
+    - **Positional encoding** injects word-order information that attention alone cannot capture.
+    - **Feed-forward networks** transform each token individually, adding non-linearity.
+
+    A transformer stacks these components into repeated blocks. Variants include encoder-only (BERT), decoder-only (GPT), and encoder-decoder (the original Transformer, T5).
     """)
     return
 
@@ -637,11 +640,11 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    # BERT: Bidirectional Encoder Representations from Transformers
+    # BERT: A Transformer in Action
 
-    ELMo addressed polysemy with bidirectional LSTMs. BERT advances this by using transformers and self-attention, significantly improving context understanding.
+    Now that we understand how transformers work, let's see one in action. **BERT** (Bidirectional Encoder Representations from Transformers) is an encoder-only transformer model that demonstrated the power of this architecture across a wide range of NLP tasks, from question answering to text classification.
 
-    Due to its powerful capabilities in tasks like question answering and text classification, BERT has become foundational in NLP, even enhancing Google's search engine.
+    We will load a pre-trained BERT model, inspect its internals, and see how it resolves word ambiguity using the attention and layer mechanisms we just learned.
     """)
     return
 
@@ -1008,6 +1011,20 @@ def _(mo, noun_placeholder, predict_masked_word):
     _results = f"**{_obj}**: {', '.join(_predictions)}"
 
     mo.vstack([noun_placeholder, _results])
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ## Further Readings
+
+    - [Attention is All You Need](https://arxiv.org/abs/1706.03762)
+    - [3Blue1Brown - Visualizing Attention](https://www.3blue1brown.com/lessons/attention)
+    - [Transformer Explainer](https://poloclub.github.io/transformer-explainer/)
+    - [The Annotated Transformer](https://nlp.seas.harvard.edu/2018/04/03/attention.html)
+    - [You could have designed state of the art positional encoding](https://huggingface.co/blog/designing-positional-encoding)
+    """)
     return
 
 
