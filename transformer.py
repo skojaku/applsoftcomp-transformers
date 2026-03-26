@@ -655,8 +655,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    from pathlib import Path
+def _(Path, mo):
     return mo.center(mo.image(src=Path("figs/bert-architecture.png"), alt="BERT architecture"))
 
 
@@ -805,8 +804,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    from pathlib import Path
+def _(Path, mo):
     return mo.center(mo.image(src=Path("figs/padding-attention-mask.png"), alt="Padding and attention mask"))
 
 
@@ -1010,8 +1008,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    from pathlib import Path
+def _(Path, mo):
     return mo.center(mo.image(src=Path("figs/bert-masked-lm.png"), alt="BertForMaskedLM architecture"))
 
 
@@ -1075,8 +1072,9 @@ def _():
     import numpy as np
     import pandas as pd
     import altair as alt
+    from pathlib import Path
 
-    return alt, mo, np, pd
+    return Path, alt, mo, np, pd
 
 
 @app.cell(hide_code=True)
