@@ -37,16 +37,10 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(embeddings, mo, pd, scatter_plot, words):
+def _(embeddings, pd, scatter_plot, words):
     _df = pd.DataFrame({"word": words, "x": embeddings[:, 0], "y": embeddings[:, 1]})
     _chart = scatter_plot(_df, _df, title="Static Word Embeddings", width=400, height=400)
-
-    return mo.vstack(
-        [
-            _chart,
-        ],
-        align="center",
-    )
+    return
 
 
 @app.cell(hide_code=True)
@@ -656,9 +650,18 @@ def _(mo):
     BERT consists of 12 stacked encoder transformer layers. No decoder is used.
 
     Each layer progressively refines token embeddings, making them increasingly context-aware and effective for NLP tasks.
+    """)
+    return
 
-    ![BERT architecture](figs/bert-architecture.png)
 
+@app.cell(hide_code=True)
+def _(mo):
+    return mo.image(src="figs/bert-architecture.png", alt="BERT architecture")
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## Pre-training BERT
 
     BERT is pre-trained on massive text datasets like Wikipedia and BooksCorpus. During this phase, BERT learns language patterns, context, and semantic relationships without human supervision.
@@ -781,11 +784,11 @@ def _(mo):
 
 
 @app.cell
-def _(bert_last_hidden_state, mo):
+def _(bert_last_hidden_state):
     token_position = 3
     token_embedding = bert_last_hidden_state[0, token_position, :]
     print(token_embedding[:10])
-    return mo.show_code()
+    return
 
 
 @app.cell(hide_code=True)
@@ -796,10 +799,13 @@ def _(mo):
     Processing multiple sentences one by one is inefficient. We can process them in a batch.
 
     The challenge: sentences have different lengths, so we pad shorter sentences with `[PAD]` tokens and use an attention mask to ignore padding.
-
-    ![Padding and attention mask](figs/padding-attention-mask.png)
     """)
     return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    return mo.image(src="figs/padding-attention-mask.png", alt="Padding and attention mask")
 
 
 @app.cell
@@ -848,11 +854,11 @@ def _(mo):
 
 
 @app.cell
-def _(bert_inputs, bert_model, mo):
+def _(bert_inputs, bert_model):
     bert_outputs_batch = bert_model(**bert_inputs, output_hidden_states=True)
     bert_last_hidden_batch = bert_outputs_batch.hidden_states[-1]
     print(f"Last hidden state batch shape: {bert_last_hidden_batch.shape}")
-    return mo.show_code()
+    return
 
 
 @app.cell(hide_code=True)
@@ -905,14 +911,6 @@ def _(mo):
     return (slider_bert_layer,)
 
 
-@app.cell(hide_code=True)
-def _(mo, slider_bert_layer):
-    return mo.vstack([
-        mo.md("Choose the layer for the embedding, and see how the embedding changes."),
-        slider_bert_layer,
-    ])
-
-
 @app.cell
 def _(bert_model, bert_tokenizer, mo, torch, wsd_train_data):
     from collections import defaultdict
@@ -950,6 +948,12 @@ def _(bert_model, bert_tokenizer, mo, torch, wsd_train_data):
         )
     mo.output.replace(mo.show_code())
     return wsd_all_embeddings, wsd_all_labels, wsd_all_sentences
+
+
+@app.cell(hide_code=True)
+def _(slider_bert_layer):
+    slider_bert_layer
+    return
 
 
 @app.cell(hide_code=True)
@@ -999,10 +1003,13 @@ def _(mo):
     BERT will predict the masked token. Since no color word appears explicitly, the prediction reflects BERT's learned understanding of the object.
 
     We use `BertForMaskedLM`, a version of the model with a language modeling head on top.
-
-    <img src="figs/bert-masked-lm.png" style="display: block; margin-left: auto; margin-right: auto;">
     """)
     return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    return mo.image(src="figs/bert-masked-lm.png", alt="BertForMaskedLM architecture")
 
 
 @app.cell(hide_code=True)
