@@ -22,6 +22,12 @@ def _(mo):
     *An Interactive Guide to Attention, Residual Connections, and Positional Encoding*
 
     [@SadamoriKojaku](https://skojaku.github.io/)
+
+    ## Attention as Weighted Average
+
+    Consider the word "bank." A static embedding gives it one fixed position, but its meaning shifts depending on context -- is it a financial institution or the side of a river?
+
+    We need a way to let surrounding words influence the meaning of "bank."
     """)
     return
 
@@ -33,15 +39,6 @@ def _(embeddings, mo, pd, scatter_plot, words):
 
     mo.vstack(
         [
-            mo.md(
-                """
-                ## Attention as Weighted Average
-
-                Consider the word "bank." A static embedding gives it one fixed position, but its meaning shifts depending on context -- is it a financial institution or the side of a river?
-
-                We need a way to let surrounding words influence the meaning of "bank."
-                """
-            ),
             _chart,
         ],
         align="center",
@@ -55,10 +52,15 @@ def _(mo):
     The simplest idea: compute a weighted average of all word vectors in the sentence.
 
     $$
-    v_{\text{bank}}^{\text{new}} = w_1 \, v_{\text{bank}} + w_2 \, v_{\text{money}} + w_3 \, v_{\text{loan}} + w_4 \, v_{\text{river}} + w_5 \, v_{\text{shore}}
+    v_{\text{bank}}^{\text{new}} = a_1 \, v_{\text{bank}} + a_2 \, v_{\text{money}} + a_3 \, v_{\text{loan}} + a_4 \, v_{\text{river}} + a_5 \, v_{\text{shore}}
     $$
 
-    If we put large weight on "money" and "loan," the new "bank" vector shifts toward the financial cluster. Weight "river" and "shore" instead, and it drifts toward geography.
+    If we put large weight $a$ on "money" and "loan," the new "bank" vector shifts toward the financial cluster. Weight "river" and "shore" instead, and it drifts toward geography.
+
+    The weights have constraints so that, when used, they give a "weighted" average.
+
+    1. The weights sum to 1
+    2. The weight $a$ is non-negative $(a \geq 0)$.
     """)
     return
 
@@ -70,15 +72,14 @@ def _(
     np,
     pd,
     scatter_plot,
+    slider_bank,
     slider_loan,
     slider_money,
     slider_river,
     slider_shore,
     words,
 ):
-    _raw = np.array(
-        [1.0, slider_money.value, slider_loan.value, slider_river.value, slider_shore.value]
-    )
+    _raw = np.array([slider_bank.value, slider_money.value, slider_loan.value, slider_river.value, slider_shore.value])
     _weights = _raw / _raw.sum()
     _new_vec = _weights @ embeddings
 
@@ -87,21 +88,18 @@ def _(
 
     _chart = scatter_plot(_df_new, _df_orig, title="Contextualized 'bank'", width=400, height=400)
 
-    _eq = (
-        r"$v_{\text{bank}}^{\text{new}} = "
-        + " + ".join(
-            f"{_weights[i]:.2f} \\, v_{{\\text{{{words[i]}}}}}$"
-            if i == len(words) - 1
-            else f"{_weights[i]:.2f} \\, v_{{\\text{{{words[i]}}}}}"
-            for i in range(len(words))
-        )
+    _eq = r"$v_{\text{bank}}^{\text{new}} = " + " + ".join(
+        f"{_weights[i]:.2f} \\, v_{{\\text{{{words[i]}}}}}$"
+        if i == len(words) - 1
+        else f"{_weights[i]:.2f} \\, v_{{\\text{{{words[i]}}}}}"
+        for i in range(len(words))
     )
 
     mo.vstack(
         [
             mo.md("Drag the sliders to change the weights and see how 'bank' moves."),
             mo.hstack(
-                [mo.vstack([slider_money, slider_loan, slider_river, slider_shore]), _chart],
+                [mo.vstack([slider_bank, slider_money, slider_loan, slider_river, slider_shore]), _chart],
                 align="center",
             ),
             mo.md(_eq),
@@ -113,21 +111,68 @@ def _(
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("""
-    The output is just a weighted average. The real question is: how do we compute these weights automatically? This is what the attention mechanism learns.
+    mo.md(r"""
+    ## Computing Weights with Query and Key
+
+    We train two small neural networks.
+
+    1. One produces a *query* vector for each word.  Think of it as asking "what am I looking for?"
+    2. The other produces a *key* vector, answering "what do I contain?"
+
+    We compute the query vector $q_i$ for token $i$ and key vector $k_j$ for token $j$ by a linear transformation of the original embeddings:
+
+    $$
+    q_i = {\bf W}_{\text{query}} x_i, \quad
+    k_i = {\bf W}_{\text{key}} x_i,
+    $$
+
+    where $x_i$ is the input token vector, and ${\bf W}_{\text{query}}$ and ${\bf W}_{\text{key}}$ are learnable weight matrices. Denoted by ${\bf Q}$ and ${\bf K}$ the stack of query and key vectors, respectively, i.e.,
+
+    $$
+    {\bf Q} = \begin{bmatrix} q_1 ^\top \\ q_2^\top \\ \vdots \\ q_n^\top \end{bmatrix},
+    \quad
+    {\bf K} = \begin{bmatrix} k_1^\top \\ k_2^\top \\ \vdots \\ k_n^\top \end{bmatrix},
+    $$
+
+    The asssociations between tokens $i$ and $j$ is computed by the dot product of their query and key vectors:
+
+    $$
+    \text{score}_{ij} = q_i \cdot k_j, \quad S = {\bf Q} {\bf K}^\top.
+    $$
+
+    Scores range from $-\infty$ to $\infty$. But we want to ensure that the attention is positive and sum to one.
+    We do so by using *soft-max*:
+
+    $$
+    \text{attention} = \text{softmax}({\bf Q} {\bf K}^\top / \sqrt{d}),
+    $$
+
+    where for a matrix ${\bf X}=(x_{ij})$, the softmax is given by:
+
+    $$
+    \text{softmax}({\bf X}) = \dfrac{\exp(x_{ij})}{\sum_\ell \exp(x_{i\ell})}.
+    $$
+
+    Here, we divide by $\sqrt{d}$ to keep the dot products from growing too large in high dimensions, which would push softmax into regions with tiny gradients.
     """)
     return
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Computing Weights with Query and Key
+def _(embeddings, heatmap, mo, np, words):
+    _scores = embeddings @ embeddings.T
+    _exp = np.exp(_scores / np.sqrt(embeddings.shape[1]))
+    attn = _exp / _exp.sum(axis=1, keepdims=True)
 
-    We train two small neural networks. One produces a *query* vector for each word -- think of it as asking "what am I looking for?" The other produces a *key* vector -- answering "what do I contain?"
+    _chart_raw = heatmap(_scores, tick_labels=words, title="Raw dot products", width=300, height=300)
+    _chart_soft = heatmap(attn, tick_labels=words, title="After softmax", width=300, height=300, vmin=0, vmax=1)
 
-    When a query and key point in similar directions, their dot product is large, meaning strong attention.
-    """)
+    mo.vstack(
+        [
+            mo.ui.tabs({"Raw scores": _chart_raw, "After softmax": _chart_soft}),
+        ],
+        align="center",
+    )
     return
 
 
@@ -147,12 +192,8 @@ def _(
     scatter_plot,
     words,
 ):
-    _orig_q, _tf_q, _W_q, _b_q = emb2df(
-        words, embeddings, q_scale.value, q_rotation.value, q_bias.value
-    )
-    _orig_k, _tf_k, _W_k, _b_k = emb2df(
-        words, embeddings, k_scale.value, k_rotation.value, k_bias.value
-    )
+    _orig_q, _tf_q, _W_q, _b_q = emb2df(words, embeddings, q_scale.value, q_rotation.value, q_bias.value)
+    _orig_k, _tf_k, _W_k, _b_k = emb2df(words, embeddings, k_scale.value, k_rotation.value, k_bias.value)
 
     _Q = embeddings @ _W_q + _b_q
     _K = embeddings @ _W_k + _b_k
@@ -183,101 +224,73 @@ def _(
 
 
 @app.cell(hide_code=True)
-def _(embeddings, heatmap, mo, np, words):
-    _scores = embeddings @ embeddings.T
-    _exp = np.exp(_scores / np.sqrt(embeddings.shape[1]))
-    attn = _exp / _exp.sum(axis=1, keepdims=True)
+def _(mo):
+    mo.md(r"""
+    Remind that:
 
-    _chart_raw = heatmap(_scores, tick_labels=words, title="Raw dot products", width=300, height=300)
-    _chart_soft = heatmap(attn, tick_labels=words, title="After softmax", width=300, height=300, vmin=0, vmax=1)
+    $$
+    v_{\text{bank}}^{\text{new}} = a_1 \, v_{\text{bank}} + a_2 \, v_{\text{money}} + \cdots
+    $$
 
-    mo.vstack(
-        [
-            mo.md(
-                r"""
-                The attention score between tokens $i$ and $j$ is the dot product of their query and key vectors:
+    We still need another vector, $v$. We do so in the same way as we do for $q$ and $k$:
 
-                $$
-                \text{score}_{ij} = q_i \cdot k_j, \quad S = QK^\top
-                $$
+    $$
+    v_i = {\bf W}_{\text{value}} x_i,
+    $$
 
-                Scores range from $-\infty$ to $\infty$. We normalize each row with softmax so the weights sum to 1:
+    where ${\bf W}$ is another learnable weight matrix. Denoted by ${\bf V}$ the stack of value vectors, we now have the full description of the attention, i.e.,
 
-                $$
-                \text{attention} = \text{softmax}(QK^\top / \sqrt{d})
-                $$
+    $$
+    \text{Attention}(Q,K,V) = \underbrace{\text{softmax}\!\left(\frac{{\bf Q} {\bf K}^\top}{\sqrt{d}}\right)}_{\text{weights (from Q and K)}} \cdot \underbrace{{\bf V}}_{\text{what to average}}
+    $$
 
-                We divide by $\sqrt{d}$ to keep the dot products from growing too large in high dimensions, which would push softmax into regions with tiny gradients.
-                """
-            ),
-            mo.ui.tabs({"Raw scores": _chart_raw, "After softmax": _chart_soft}),
-        ],
-        align="center",
-    )
-    return (attn,)
+    The output is an weighted average, with the weights being *learned* from the data instead of set by hand.
+
+    Next, let's see how transformers use multiple attention heads in parallel.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+ 
+    """)
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## The Full Picture -- QKV
-
-    Remember the weighted average from the beginning?
-
-    $$
-    v_{\text{bank}}^{\text{new}} = w_1 \, v_{\text{bank}} + w_2 \, v_{\text{money}} + \cdots
-    $$
-
-    Back then, we set the weights by hand. Now we have all the pieces to compute them automatically:
-
-    1. **Query and Key** decide the weights -- how much each word attends to every other word.
-    2. **Value** decides what gets mixed -- the vectors that actually get averaged.
-
-    $$
-    \text{Attention}(Q,K,V) = \underbrace{\text{softmax}\!\left(\frac{QK^\top}{\sqrt{d}}\right)}_{\text{weights (from Q and K)}} \cdot \underbrace{V}_{\text{what to average}}
-    $$
-
-    The output is still a weighted average -- exactly the same operation as before -- but the weights are now *learned* from the data instead of set by hand.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(attn, mo, words):
-    _eq = (
-        r"$v_{\text{bank}}^{\text{out}} = "
-        + " + ".join(
-            f"{attn[0, i]:.2f} \\, v_{{\\text{{{words[i]}}}}}"
-            for i in range(len(words))
-        )
-        + "$"
-    )
-
-    mo.vstack(
-        [
-            mo.md(_eq),
-        ],
-        align="center",
-    )
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
-    That is the core of self-attention. Every token looks at every other token, computes how relevant they are (via Q and K), and produces a weighted average of value vectors. Next, let's see how transformers use multiple attention heads in parallel.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
     ## Multi-Head Attention
 
-    A single attention head can only learn one pattern of relationships. Multi-head attention runs several heads in parallel, each with its own Q, K, V weights.
+    A single attention head can only capture one type of relationship. For "bank," one head might learn to attend to financial words, but then it cannot simultaneously attend to geographical words.
 
-    One head might learn financial associations for "bank," another geographical ones. The outputs from all heads are concatenated and linearly projected.
+    Multi-head attention solves this by running several attention heads in parallel. Here is how it works:
+
+    **1. Split the embedding into sub-vectors.** Each token's $d$-dimensional vector is split into $h$ chunks of size $d/h$. For example, with $d=512$ and $h=8$, each head works with 64-dimensional sub-vectors.
+
+    **2. Each head runs its own attention.** Head $i$ has its own weight matrices ${\bf W}^{(i)}_Q$, ${\bf W}^{(i)}_K$, ${\bf W}^{(i)}_V$ and computes attention independently on its sub-vectors:
+
+    $$
+    \text{head}_i = \text{Attention}({\bf Q}_i, {\bf K}_i, {\bf V}_i)
+    $$
+
+    One head might learn financial associations for "bank," another geographical ones -- each discovers a different pattern without interference.
+
+    **3. Concatenate and project.** The outputs of all heads are concatenated back into a single $d$-dimensional vector and passed through a linear projection:
+
+    $$
+    \text{MultiHead}(Q,K,V) = [\text{head}_1; \text{head}_2; \ldots; \text{head}_h] \, {\bf W}_O
+    $$
+
+    **4. Feed-forward network.** The result is then passed through a two-layer MLP (multilayer perceptron) applied independently to each token:
+
+    $$
+    \text{FFN}(x) = {\bf W}_2 \, \text{ReLU}({\bf W}_1 x + b_1) + b_2
+    $$
+
+    The attention layers move information *between* tokens. The feed-forward layers transform each token's representation *individually* -- adding non-linearity and richer feature combinations that attention alone cannot express.
     """)
     return
 
@@ -347,9 +360,7 @@ def _(apply_causal_mask, en_embeddings, en_words, heatmap, mo, np):
     # Masked
     _attn_masked = apply_causal_mask(_scores)
 
-    _chart_unmasked = heatmap(
-        _attn_unmasked, tick_labels=en_words, title="Unmasked", width=250, height=250, vmin=0, vmax=1
-    )
+    _chart_unmasked = heatmap(_attn_unmasked, tick_labels=en_words, title="Unmasked", width=250, height=250, vmin=0, vmax=1)
     _chart_masked = heatmap(
         _attn_masked, tick_labels=en_words, title="Masked (causal)", width=250, height=250, vmin=0, vmax=1
     )
@@ -513,14 +524,8 @@ def _(
             tooltip=["position", "x", "y"],
         )
     )
-    _line = (
-        alt.Chart(_df_spiral)
-        .mark_line(opacity=0.3, color="gray")
-        .encode(x="x", y="y", order="position")
-    )
-    _spiral_chart = (_scatter + _line).properties(
-        width=300, height=300, title="Positional Encoding (first 2 dims)"
-    )
+    _line = alt.Chart(_df_spiral).mark_line(opacity=0.3, color="gray").encode(x="x", y="y", order="position")
+    _spiral_chart = (_scatter + _line).properties(width=300, height=300, title="Positional Encoding (first 2 dims)")
 
     # Similarity heatmap
     _sim = _pos_enc @ _pos_enc.T
@@ -577,9 +582,6 @@ def _(mo):
     return
 
 
-# --- Logic cells (imports, data, helpers, UI definitions) ---
-
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
@@ -618,6 +620,7 @@ def _(np):
 @app.cell(hide_code=True)
 def _(alt, np, pd):
     # --- Helper functions ---
+
 
     def scatter_plot(
         df,
@@ -667,14 +670,9 @@ def _(alt, np, pd):
             )
             .transform_calculate(x0="0", y0="0")
         )
-        text = (
-            alt.Chart(df)
-            .mark_text(align="left", dx=10, dy=-5, fontSize=14)
-            .encode(x="x", y="y", text="word")
-        )
-        return (base_original + text_original + base + vectors + text).properties(
-            width=width, height=height, title=title
-        )
+        text = alt.Chart(df).mark_text(align="left", dx=10, dy=-5, fontSize=14).encode(x="x", y="y", text="word")
+        return (base_original + text_original + base + vectors + text).properties(width=width, height=height, title=title)
+
 
     def heatmap(
         matrix,
@@ -729,22 +727,18 @@ def _(alt, np, pd):
         )
         return (base + text_layer).properties(width=width, height=height, title=title)
 
+
     def emb2df(words, embeddings, scale, rotation, bias):
         theta = np.radians(rotation)
         scale_matrix = np.array([[scale, 0], [0, scale]])
-        rotation_matrix = np.array(
-            [[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]]
-        )
+        rotation_matrix = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
         W = scale_matrix @ rotation_matrix
         b = np.array([bias, bias])
         transformed = embeddings @ W + b
-        original_df = pd.DataFrame(
-            {"word": words, "x": embeddings[:, 0], "y": embeddings[:, 1]}
-        )
-        transformed_df = pd.DataFrame(
-            {"word": words, "x": transformed[:, 0], "y": transformed[:, 1]}
-        )
+        original_df = pd.DataFrame({"word": words, "x": embeddings[:, 0], "y": embeddings[:, 1]})
+        transformed_df = pd.DataFrame({"word": words, "x": transformed[:, 0], "y": transformed[:, 1]})
         return original_df, transformed_df, W, b
+
 
     def compute_attention(Q, K):
         d = Q.shape[1]
@@ -752,12 +746,14 @@ def _(alt, np, pd):
         exp_scores = np.exp(scores - np.max(scores, axis=1, keepdims=True))
         return exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
 
+
     def apply_causal_mask(scores):
         n = scores.shape[0]
         mask = np.triu(np.ones((n, n)), k=1) * (-1e9)
         masked = scores + mask
         exp_scores = np.exp(masked - np.max(masked, axis=1, keepdims=True))
         return exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
+
 
     def get_positional_encoding(seq_len, d_model):
         pos_enc = np.zeros((seq_len, d_model))
@@ -780,11 +776,12 @@ def _(alt, np, pd):
 
 @app.cell(hide_code=True)
 def _(mo):
+    slider_bank = mo.ui.slider(0, 1, 0.05, value=0.25, label="bank")
     slider_money = mo.ui.slider(0, 1, 0.05, value=0.25, label="money")
     slider_loan = mo.ui.slider(0, 1, 0.05, value=0.25, label="loan")
     slider_river = mo.ui.slider(0, 1, 0.05, value=0.25, label="river")
     slider_shore = mo.ui.slider(0, 1, 0.05, value=0.25, label="shore")
-    return slider_loan, slider_money, slider_river, slider_shore
+    return slider_bank, slider_loan, slider_money, slider_river, slider_shore
 
 
 @app.cell(hide_code=True)
