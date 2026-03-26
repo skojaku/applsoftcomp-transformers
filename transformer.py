@@ -37,20 +37,6 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(embeddings, mo, pd, scatter_plot, words):
-    _df = pd.DataFrame({"word": words, "x": embeddings[:, 0], "y": embeddings[:, 1]})
-    _chart = scatter_plot(_df, _df, title="Static Word Embeddings", width=400, height=400)
-
-    mo.vstack(
-        [
-            _chart,
-        ],
-        align="center",
-    )
-    return
-
-
-@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     The simplest idea: compute a weighted average of all word vectors in the sentence.
@@ -426,7 +412,10 @@ def _(mo):
 
     This prevents signals from growing or shrinking as they pass through many layers.
 
-    > **Note:** The original transformer used Layer Normalization, but modern transformers (e.g., LLaMA, GPT-NeoX) have largely switched to **RMSNorm** (Root Mean Square Layer Normalization). RMSNorm drops the mean-centering step and normalizes by the root mean square alone: $\text{RMSNorm}(x) = \gamma \cdot x / \sqrt{\frac{1}{d}\sum x_i^2 + \epsilon}$. This is simpler, faster, and works just as well in practice.
+    /// note
+
+    The original transformer used Layer Normalization, but modern transformers (e.g., LLaMA, GPT-NeoX) have largely switched to **RMSNorm** (Root Mean Square Layer Normalization). RMSNorm drops the mean-centering step and normalizes by the root mean square alone: $\text{RMSNorm}(x) = \gamma \cdot x / \sqrt{\frac{1}{d}\sum x_i^2 + \epsilon}$. This is simpler, faster, and works just as well in practice.
+    ///
     """)
     return
 
@@ -608,7 +597,9 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    > **Note:** Sinusoidal positional encoding was foundational, but modern transformers have moved to **Rotary Position Embeddings (RoPE)**. Instead of adding a position vector to the input, RoPE rotates the query and key vectors by an angle proportional to their position. This encodes *relative* position directly into the attention score, generalizes better to longer sequences, and is now standard in models like LLaMA, Mistral, and GPT-NeoX.
+    /// note
+    Sinusoidal positional encoding was foundational, but modern transformers have moved to **Rotary Position Embeddings (RoPE)**. Instead of adding a position vector to the input, RoPE rotates the query and key vectors by an angle proportional to their position. This encodes *relative* position directly into the attention score, generalizes better to longer sequences, and is now standard in models like LLaMA, Mistral, and GPT-NeoX.
+    ///
     """)
     return
 
@@ -632,11 +623,6 @@ def _(mo):
     return
 
 
-# ============================================================
-# BERT
-# ============================================================
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
@@ -658,6 +644,8 @@ def _(mo):
 
     Each layer progressively refines token embeddings, making them increasingly context-aware and effective for NLP tasks.
 
+    ![BERT architecture](figs/bert-architecture.png)
+
     ## Pre-training BERT
 
     BERT is pre-trained on massive text datasets like Wikipedia and BooksCorpus. During this phase, BERT learns language patterns, context, and semantic relationships without human supervision.
@@ -676,7 +664,7 @@ def _(mo):
     return
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _():
     from transformers import AutoTokenizer, AutoModel
 
@@ -752,6 +740,14 @@ def _(bert_outputs):
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Let's retrieve the last layer.
+    """)
+    return
+
+
 @app.cell
 def _(bert_outputs):
     bert_last_hidden_state = bert_outputs.hidden_states[-1]
@@ -783,6 +779,8 @@ def _(mo):
     Processing multiple sentences one by one is inefficient. We can process them in a batch.
 
     The challenge: sentences have different lengths, so we pad shorter sentences with `[PAD]` tokens and use an attention mask to ignore padding.
+
+    ![Padding and attention mask](figs/padding-attention-mask.png)
     """)
     return
 
@@ -971,6 +969,8 @@ def _(mo):
     BERT will predict the masked token. Since no color word appears explicitly, the prediction reflects BERT's learned understanding of the object.
 
     We use `BertForMaskedLM`, a version of the model with a language modeling head on top.
+
+    <img src="figs/bert-masked-lm.png" style="display: block; margin-left: auto; margin-right: auto;">
     """)
     return
 
@@ -1026,9 +1026,6 @@ def _(mo):
     - [You could have designed state of the art positional encoding](https://huggingface.co/blog/designing-positional-encoding)
     """)
     return
-
-
-# --- Logic cells (imports, data, helpers, UI definitions) ---
 
 
 @app.cell(hide_code=True)
@@ -1231,6 +1228,20 @@ def _(mo):
     slider_river = mo.ui.slider(0, 1, 0.05, value=0.25, label="river")
     slider_shore = mo.ui.slider(0, 1, 0.05, value=0.25, label="shore")
     return slider_bank, slider_loan, slider_money, slider_river, slider_shore
+
+
+@app.cell(hide_code=True)
+def _(embeddings, mo, pd, scatter_plot, words):
+    _df = pd.DataFrame({"word": words, "x": embeddings[:, 0], "y": embeddings[:, 1]})
+    _chart = scatter_plot(_df, _df, title="Static Word Embeddings", width=400, height=400)
+
+    mo.vstack(
+        [
+            _chart,
+        ],
+        align="center",
+    )
+    return
 
 
 @app.cell(hide_code=True)
