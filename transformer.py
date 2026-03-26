@@ -5,6 +5,10 @@
 #     "marimo>=0.21.1",
 #     "numpy==2.4.3",
 #     "pandas==3.0.1",
+#     "scikit-learn==1.6.1",
+#     "torch==2.6.0",
+#     "tqdm==4.67.1",
+#     "transformers==4.49.0",
 # ]
 # ///
 
@@ -625,6 +629,391 @@ def _(mo):
     return
 
 
+# ============================================================
+# BERT
+# ============================================================
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    # BERT: Bidirectional Encoder Representations from Transformers
+
+    ELMo addressed polysemy with bidirectional LSTMs. BERT advances this by using transformers and self-attention, significantly improving context understanding.
+
+    Due to its powerful capabilities in tasks like question answering and text classification, BERT has become foundational in NLP, even enhancing Google's search engine.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Architecture of BERT
+
+    BERT consists of 12 stacked encoder transformer layers. No decoder is used.
+
+    Each layer progressively refines token embeddings, making them increasingly context-aware and effective for NLP tasks.
+
+    ## Pre-training BERT
+
+    BERT is pre-trained on massive text datasets like Wikipedia and BooksCorpus. During this phase, BERT learns language patterns, context, and semantic relationships without human supervision.
+
+    BERT is pre-trained on two objectives:
+
+    - **Masked Language Modeling (MLM)**: Some tokens are masked, and the model must predict the masked tokens. Three ways to mask: replace with `[MASK]` (80%), replace with a random word (10%), or keep unchanged (10%).
+    - **Next Sentence Prediction (NSP)**: Predict whether two sentences are consecutive. A `[CLS]` token at the start and `[SEP]` tokens between/after sentences structure the input. The `[CLS]` embedding is used for the prediction.
+
+    ## Let's play with BERT
+
+    The best way to understand BERT is to play with it.
+
+    We will use the [transformers](https://huggingface.co/docs/transformers/index) library to load the model and the tokenizer.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _():
+    from transformers import AutoTokenizer, AutoModel
+
+    bert_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+    bert_model = AutoModel.from_pretrained("bert-base-uncased")
+    bert_model = bert_model.eval()
+    return bert_model, bert_tokenizer
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    - `transformers` library provides easy access to NLP models
+    - `AutoTokenizer` and `AutoModel` automatically load the right tokenizer and model
+    - `model.eval()` prepares the model for inference
+
+    ## Tokenizer
+
+    The tokenizer breaks text into tokens that BERT can understand.
+    """)
+    return
+
+
+@app.cell
+def _(bert_tokenizer):
+    text = "Binghamton University"
+
+    tokens = bert_tokenizer.tokenize(text, add_special_tokens=True)
+    token_ids = bert_tokenizer.convert_tokens_to_ids(tokens)
+
+    print(f"Text: '{text}'")
+    print(f"Tokenized: {tokens}")
+    print(f"Token IDs: {token_ids}")
+    return (token_ids,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ## Embedding tokens
+
+    Now the preparation is done. Let us feed the token IDs to the model and get the embeddings of the tokens.
+    """)
+    return
+
+
+@app.cell
+def _(bert_model, token_ids):
+    import torch
+
+    token_ids_tensor = torch.tensor([token_ids])
+    bert_outputs = bert_model(token_ids_tensor, output_hidden_states=True)
+    return bert_outputs, torch
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    The `outputs` contains:
+
+    1. **Input token embeddings** before the first transformer module
+    2. **Output token embeddings** after each transformer module
+    3. **Attention scores** of the tokens
+
+    There are 13 tensors in `outputs.hidden_states` (1 input embedding + 12 transformer outputs). Each tensor has the shape `(batch_size, sequence_length, hidden_size)`.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(bert_outputs):
+    bert_outputs.hidden_states
+    return
+
+
+@app.cell
+def _(bert_outputs):
+    bert_last_hidden_state = bert_outputs.hidden_states[-1]
+    print(f"Shape: {bert_last_hidden_state.shape}")
+    return (bert_last_hidden_state,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    Each token embedding can be retrieved by indexing:
+    """)
+    return
+
+
+@app.cell
+def _(bert_last_hidden_state):
+    token_position = 3
+    token_embedding = bert_last_hidden_state[0, token_position, :]
+    print(token_embedding[:10])
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ## Batch processing
+
+    Processing multiple sentences one by one is inefficient. We can process them in a batch.
+
+    The challenge: sentences have different lengths, so we pad shorter sentences with `[PAD]` tokens and use an attention mask to ignore padding.
+    """)
+    return
+
+
+@app.cell
+def _(bert_tokenizer):
+    bert_text1 = "Binghamton University"
+    bert_text2 = "State University of New York"
+
+    tokens1 = bert_tokenizer.tokenize(bert_text1, add_special_tokens=True)
+    tokens2 = bert_tokenizer.tokenize(bert_text2, add_special_tokens=True)
+
+    token_ids1 = bert_tokenizer.convert_tokens_to_ids(tokens1)
+    token_ids2 = bert_tokenizer.convert_tokens_to_ids(tokens2)
+
+    print(f"Token IDs of text1: {token_ids1}")
+    print(f"Token IDs of text2: {token_ids2}")
+    return bert_text1, bert_text2
+
+
+@app.cell
+def _(bert_text1, bert_text2, bert_tokenizer):
+    bert_inputs = bert_tokenizer(
+        [bert_text1, bert_text2],
+        add_special_tokens=True,
+        padding=True,
+        truncation=True,
+        return_tensors="pt",
+        return_attention_mask=True,
+    )
+    print(bert_inputs)
+    return (bert_inputs,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    Now we feed the padded sequences and the attention mask into the model. Notice the first dimension is `2` because we have two sentences.
+    """)
+    return
+
+
+@app.cell
+def _(bert_inputs, bert_model):
+    bert_outputs_batch = bert_model(**bert_inputs, output_hidden_states=True)
+    bert_last_hidden_batch = bert_outputs_batch.hidden_states[-1]
+    print(f"Last hidden state batch shape: {bert_last_hidden_batch.shape}")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ## Case study: Polysemy resolution
+
+    Consider two meanings of a word (e.g., "apple" as fruit vs. company). We use BERT to embed sentences containing the polysemous word and visualize whether BERT separates the senses.
+
+    We use [CoarseWSD-20](https://github.com/danlou/bert-disambiguation/tree/master/data/CoarseWSD-20), a dataset with polysemous words and their sense labels.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(pd):
+    from sklearn.decomposition import PCA
+
+    def load_wsd_data(focal_word, is_train, n_samples=100):
+        data_type = "train" if is_train else "test"
+        data_file = f"https://raw.githubusercontent.com/danlou/bert-disambiguation/master/data/CoarseWSD-20/{focal_word}/{data_type}.data.txt"
+        label_file = f"https://raw.githubusercontent.com/danlou/bert-disambiguation/master/data/CoarseWSD-20/{focal_word}/{data_type}.gold.txt"
+
+        data_table = pd.read_csv(
+            data_file, sep="\t", header=None,
+            dtype={"word_pos": int, "sentence": str},
+            names=["word_pos", "sentence"],
+        )
+        label_table = pd.read_csv(
+            label_file, sep="\t", header=None,
+            dtype={"label": int}, names=["label"],
+        )
+        combined_table = pd.concat([data_table, label_table], axis=1)
+        return combined_table.sample(n_samples)
+
+    focal_word = "apple"
+    wsd_train_data = load_wsd_data(focal_word, is_train=True)
+    return PCA, wsd_train_data
+
+
+@app.cell(hide_code=True)
+def _(wsd_train_data):
+    wsd_train_data.head(10)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo, slider_bert_layer):
+    mo.vstack([
+        mo.md("Choose the layer for the embedding, and see how the embedding changes."),
+        slider_bert_layer,
+    ])
+    return
+
+
+@app.cell
+def _(bert_model, bert_tokenizer, torch, wsd_train_data):
+    from collections import defaultdict
+
+    _batch_size = 128
+    wsd_all_labels = []
+    wsd_all_sentences = []
+    wsd_all_embeddings = defaultdict(list)
+
+    for _i in range(0, len(wsd_train_data), _batch_size):
+        _batch = wsd_train_data.iloc[_i : _i + _batch_size]
+        _batch_sentences = _batch["sentence"].tolist()
+        _batch_focal_indices = _batch["word_pos"].tolist()
+        _batch_labels = _batch["label"].tolist()
+
+        _encoded = bert_tokenizer(
+            _batch_sentences, padding=True, truncation=True,
+            return_tensors="pt", add_special_tokens=True,
+        )
+        _out = bert_model(**_encoded, output_hidden_states=True)
+
+        for _layer_id in range(len(_out.hidden_states)):
+            _focal_embs = [
+                _out.hidden_states[_layer_id][_idx, _focal_pos, :]
+                for _idx, _focal_pos in enumerate(_batch_focal_indices)
+            ]
+            wsd_all_embeddings[_layer_id] += _focal_embs
+
+        wsd_all_labels = wsd_all_labels + _batch_labels
+        wsd_all_sentences = wsd_all_sentences + _batch_sentences
+
+    for _layer_id in wsd_all_embeddings.keys():
+        wsd_all_embeddings[_layer_id] = (
+            torch.vstack(wsd_all_embeddings[_layer_id]).detach().numpy()
+        )
+    return wsd_all_embeddings, wsd_all_labels, wsd_all_sentences
+
+
+@app.cell(hide_code=True)
+def _(
+    PCA,
+    alt,
+    pd,
+    slider_bert_layer,
+    wsd_all_embeddings,
+    wsd_all_labels,
+    wsd_all_sentences,
+):
+    _pca = PCA(n_components=2, random_state=42)
+    _xy = _pca.fit_transform(wsd_all_embeddings[slider_bert_layer.value])
+
+    _df_chart = pd.DataFrame(
+        {"x": _xy[:, 0], "y": _xy[:, 1], "label": wsd_all_labels, "sentence": wsd_all_sentences}
+    )
+
+    _chart = (
+        alt.Chart(_df_chart)
+        .mark_circle(size=120)
+        .encode(
+            x=alt.X("x:Q", title="PCA 1"),
+            y=alt.Y("y:Q", title="PCA 2"),
+            color=alt.Color("label:N", legend=alt.Legend(title="Label")),
+            tooltip=["label", "sentence"],
+        )
+        .properties(width=700, height=500, title="Word Embeddings Visualization")
+        .interactive()
+    )
+    _chart
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ## Case Study 2: Implicit associations in language
+
+    Human language contains implicit associations between concepts that reflect cultural norms, stereotypes, and common patterns.
+
+    We set up a MLM task using the following template:
+
+    > "Choose a color from red, blue, green, yellow, brown, black, white, purple, orange, pink to describe the color of {object}. Color: [MASK]."
+
+    BERT will predict the masked token. Since no color word appears explicitly, the prediction reflects BERT's learned understanding of the object.
+
+    We use `BertForMaskedLM`, a version of the model with a language modeling head on top.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _():
+    from transformers import BertForMaskedLM
+
+    bert_masked_lm = BertForMaskedLM.from_pretrained("bert-base-uncased")
+    return (bert_masked_lm,)
+
+
+@app.cell
+def _(bert_masked_lm, bert_tokenizer, torch):
+    def predict_masked_word(template, object_name, top_k=5):
+        _text = template.format(object=object_name)
+        _inputs = bert_tokenizer(_text, return_tensors="pt")
+        _mask_idx = torch.where(_inputs["input_ids"] == bert_tokenizer.mask_token_id)[1]
+
+        with torch.no_grad():
+            _outputs = bert_masked_lm(**_inputs)
+
+        _logits = _outputs.logits
+        _mask_logits = _logits[0, _mask_idx, :]
+        _top_k_ids = torch.topk(_mask_logits, top_k, dim=1).indices[0].tolist()
+        _top_k_words = [bert_tokenizer.convert_ids_to_tokens(_tid) for _tid in _top_k_ids]
+        return _top_k_words
+
+    return (predict_masked_word,)
+
+
+@app.cell(hide_code=True)
+def _(mo, noun_placeholder, predict_masked_word):
+    _template = "Choose a color from red, blue, green, yellow, brown, black, white, purple, orange, pink to describe the color of {object}. Color: [MASK]."
+    _top_k = 5
+    _obj = noun_placeholder.value
+    _predictions = predict_masked_word(_template, _obj, _top_k)
+    _results = f"**{_obj}**: {', '.join(_predictions)}"
+
+    mo.vstack([noun_placeholder, _results])
+    return
+
+
+# --- Logic cells (imports, data, helpers, UI definitions) ---
+
+
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
@@ -843,6 +1232,17 @@ def _(mo):
     position_slider = mo.ui.slider(2, 30, 1, value=10, label="Number of positions")
     d_model_slider = mo.ui.slider(2, 100, 1, value=2, label="Embedding dimension")
     return d_model_slider, position_slider
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    slider_bert_layer = mo.ui.slider(0, 12, 1, 4, label="Layer to use")
+    noun_placeholder = mo.ui.text(
+        value="banana",
+        label="When asked about its color, {object} is described as [MASK].",
+        full_width=True,
+    )
+    return noun_placeholder, slider_bert_layer
 
 
 if __name__ == "__main__":
