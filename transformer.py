@@ -665,12 +665,13 @@ def _(mo):
 
 
 @app.cell
-def _():
+def _(mo):
     from transformers import AutoTokenizer, AutoModel
 
     bert_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
     bert_model = AutoModel.from_pretrained("bert-base-uncased")
     bert_model = bert_model.eval()
+    mo.output.replace(mo.show_code())
     return bert_model, bert_tokenizer
 
 
@@ -689,7 +690,7 @@ def _(mo):
 
 
 @app.cell
-def _(bert_tokenizer):
+def _(bert_tokenizer, mo):
     text = "Binghamton University"
 
     tokens = bert_tokenizer.tokenize(text, add_special_tokens=True)
@@ -698,6 +699,7 @@ def _(bert_tokenizer):
     print(f"Text: '{text}'")
     print(f"Tokenized: {tokens}")
     print(f"Token IDs: {token_ids}")
+    mo.output.replace(mo.show_code())
     return (token_ids,)
 
 
@@ -712,11 +714,12 @@ def _(mo):
 
 
 @app.cell
-def _(bert_model, token_ids):
+def _(bert_model, mo, token_ids):
     import torch
 
     token_ids_tensor = torch.tensor([token_ids])
     bert_outputs = bert_model(token_ids_tensor, output_hidden_states=True)
+    mo.output.replace(mo.show_code())
     return bert_outputs, torch
 
 
@@ -749,9 +752,10 @@ def _(mo):
 
 
 @app.cell
-def _(bert_outputs):
+def _(bert_outputs, mo):
     bert_last_hidden_state = bert_outputs.hidden_states[-1]
     print(f"Shape: {bert_last_hidden_state.shape}")
+    mo.output.replace(mo.show_code())
     return (bert_last_hidden_state,)
 
 
@@ -764,11 +768,11 @@ def _(mo):
 
 
 @app.cell
-def _(bert_last_hidden_state):
+def _(bert_last_hidden_state, mo):
     token_position = 3
     token_embedding = bert_last_hidden_state[0, token_position, :]
     print(token_embedding[:10])
-    return
+    return mo.show_code()
 
 
 @app.cell(hide_code=True)
@@ -786,7 +790,12 @@ def _(mo):
 
 
 @app.cell
-def _(bert_tokenizer):
+def _():
+    return
+
+
+@app.cell
+def _(bert_tokenizer, mo):
     bert_text1 = "Binghamton University"
     bert_text2 = "State University of New York"
 
@@ -798,11 +807,12 @@ def _(bert_tokenizer):
 
     print(f"Token IDs of text1: {token_ids1}")
     print(f"Token IDs of text2: {token_ids2}")
+    mo.output.replace(mo.show_code())
     return bert_text1, bert_text2
 
 
 @app.cell
-def _(bert_text1, bert_text2, bert_tokenizer):
+def _(bert_text1, bert_text2, bert_tokenizer, mo):
     bert_inputs = bert_tokenizer(
         [bert_text1, bert_text2],
         add_special_tokens=True,
@@ -812,6 +822,7 @@ def _(bert_text1, bert_text2, bert_tokenizer):
         return_attention_mask=True,
     )
     print(bert_inputs)
+    mo.output.replace(mo.show_code())
     return (bert_inputs,)
 
 
@@ -824,11 +835,11 @@ def _(mo):
 
 
 @app.cell
-def _(bert_inputs, bert_model):
+def _(bert_inputs, bert_model, mo):
     bert_outputs_batch = bert_model(**bert_inputs, output_hidden_states=True)
     bert_last_hidden_batch = bert_outputs_batch.hidden_states[-1]
     print(f"Last hidden state batch shape: {bert_last_hidden_batch.shape}")
-    return
+    return mo.show_code()
 
 
 @app.cell(hide_code=True)
@@ -885,7 +896,7 @@ def _(mo, slider_bert_layer):
 
 
 @app.cell
-def _(bert_model, bert_tokenizer, torch, wsd_train_data):
+def _(bert_model, bert_tokenizer, mo, torch, wsd_train_data):
     from collections import defaultdict
 
     _batch_size = 128
@@ -919,6 +930,7 @@ def _(bert_model, bert_tokenizer, torch, wsd_train_data):
         wsd_all_embeddings[_layer_id] = (
             torch.vstack(wsd_all_embeddings[_layer_id]).detach().numpy()
         )
+    mo.output.replace(mo.show_code())
     return wsd_all_embeddings, wsd_all_labels, wsd_all_sentences
 
 
@@ -984,7 +996,7 @@ def _():
 
 
 @app.cell
-def _(bert_masked_lm, bert_tokenizer, torch):
+def _(bert_masked_lm, bert_tokenizer, mo, torch):
     def predict_masked_word(template, object_name, top_k=5):
         _text = template.format(object=object_name)
         _inputs = bert_tokenizer(_text, return_tensors="pt")
@@ -999,6 +1011,7 @@ def _(bert_masked_lm, bert_tokenizer, torch):
         _top_k_words = [bert_tokenizer.convert_ids_to_tokens(_tid) for _tid in _top_k_ids]
         return _top_k_words
 
+    mo.output.replace(mo.show_code())
     return (predict_masked_word,)
 
 
