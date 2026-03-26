@@ -657,7 +657,7 @@ def _(mo):
     mo.md(r"""
     ## Architecture of BERT
 
-    BERT consists of 12 stacked encoder transformer layers. No decoder is used.
+    BERT stacks multiple encoder transformer layers. The full model (`bert-base`) has 12 layers; here we use `bert-small` with 4 layers to keep things fast. No decoder is used.
 
     Each layer progressively refines token embeddings, making them increasingly context-aware and effective for NLP tasks.
     """)
@@ -696,8 +696,8 @@ def _(mo):
     from transformers import AutoTokenizer, AutoModel
 
     # Load the tokenizer (converts text to token IDs) and model
-    bert_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-    bert_model = AutoModel.from_pretrained("bert-base-uncased")
+    bert_tokenizer = AutoTokenizer.from_pretrained("prajjwal1/bert-small")
+    bert_model = AutoModel.from_pretrained("prajjwal1/bert-small")
 
     # Switch to evaluation mode (disables dropout, etc.)
     bert_model = bert_model.eval()
@@ -753,7 +753,7 @@ def _(bert_model, mo, token_ids):
     # Wrap token IDs in a tensor with batch dimension [1, seq_len]
     token_ids_tensor = torch.tensor([token_ids])
 
-    # Run through BERT; output_hidden_states=True returns embeddings from all 13 layers
+    # Run through BERT; output_hidden_states=True returns embeddings from all 5 layers
     bert_outputs = bert_model(token_ids_tensor, output_hidden_states=True)
     mo.output.replace(mo.show_code())
     return bert_outputs, torch
@@ -768,7 +768,7 @@ def _(mo):
     2. **Output token embeddings** after each transformer module
     3. **Attention scores** of the tokens
 
-    There are 13 tensors in `outputs.hidden_states` (1 input embedding + 12 transformer outputs). Each tensor has the shape `(batch_size, sequence_length, hidden_size)`.
+    There are 5 tensors in `outputs.hidden_states` (1 input embedding + 4 transformer outputs). Each tensor has the shape `(batch_size, sequence_length, hidden_size)`.
     """)
     return
 
@@ -789,7 +789,7 @@ def _(mo):
 
 @app.cell
 def _(bert_outputs, mo):
-    # hidden_states[-1] is the output of the last (12th) transformer layer
+    # hidden_states[-1] is the output of the last (4th) transformer layer
     bert_last_hidden_state = bert_outputs.hidden_states[-1]
     print(f"Shape: {bert_last_hidden_state.shape}")  # (batch_size, seq_len, 768)
     mo.output.replace(mo.show_code())
@@ -931,7 +931,7 @@ def _(wsd_train_data):
 
 @app.cell(hide_code=True)
 def _(mo):
-    slider_bert_layer = mo.ui.slider(0, 12, 1, 4, label="Layer to use")
+    slider_bert_layer = mo.ui.slider(0, 4, 1, 4, label="Layer to use")
     return (slider_bert_layer,)
 
 
@@ -1013,78 +1013,6 @@ def _(
         .interactive()
     )
     _chart
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
-    ## Case Study 2: Implicit associations in language
-
-    Human language contains implicit associations between concepts that reflect cultural norms, stereotypes, and common patterns.
-
-    We set up a MLM task using the following template:
-
-    > "Choose a color from red, blue, green, yellow, brown, black, white, purple, orange, pink to describe the color of {object}. Color: [MASK]."
-
-    BERT will predict the masked token. Since no color word appears explicitly, the prediction reflects BERT's learned understanding of the object.
-
-    We use `BertForMaskedLM`, a version of the model with a language modeling head on top.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _():
-    return
-
-
-@app.cell(hide_code=True)
-def _():
-    from transformers import BertForMaskedLM
-
-    bert_masked_lm = BertForMaskedLM.from_pretrained("bert-base-uncased")
-    return (bert_masked_lm,)
-
-
-@app.cell
-def _(bert_masked_lm, bert_tokenizer, mo, torch):
-    def predict_masked_word(template, object_name, top_k=5):
-        """Fill in the [MASK] token and return the top-k predicted words."""
-        _text = template.format(object=object_name)
-        _inputs = bert_tokenizer(_text, return_tensors="pt")
-
-        # Find the position of the [MASK] token
-        _mask_idx = torch.where(_inputs["input_ids"] == bert_tokenizer.mask_token_id)[1]
-
-        with torch.no_grad():
-            _outputs = bert_masked_lm(**_inputs)
-
-        # Get the logits at the [MASK] position and pick the top-k predictions
-        _logits = _outputs.logits
-        _mask_logits = _logits[0, _mask_idx, :]
-        _top_k_ids = torch.topk(_mask_logits, top_k, dim=1).indices[0].tolist()
-        _top_k_words = [bert_tokenizer.convert_ids_to_tokens(_tid) for _tid in _top_k_ids]
-        return _top_k_words
-
-    mo.output.replace(mo.show_code())
-    return (predict_masked_word,)
-
-
-@app.cell
-def _():
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo, noun_placeholder, predict_masked_word):
-    _template = "Choose a color from red, blue, green, yellow, brown, black, white, purple, orange, pink to describe the color of {object}. Color: [MASK]."
-    _top_k = 5
-    _obj = noun_placeholder.value
-    _predictions = predict_masked_word(_template, _obj, _top_k)
-    _results = f"**{_obj}**: {', '.join(_predictions)}"
-
-    mo.vstack([noun_placeholder, _results])
     return
 
 
@@ -1321,16 +1249,6 @@ def _(mo):
     position_slider = mo.ui.slider(2, 30, 1, value=10, label="Number of positions")
     d_model_slider = mo.ui.slider(2, 100, 1, value=2, label="Embedding dimension")
     return d_model_slider, position_slider
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    noun_placeholder = mo.ui.text(
-        value="banana",
-        label="When asked about its color, {object} is described as [MASK].",
-        full_width=True,
-    )
-    return (noun_placeholder,)
 
 
 if __name__ == "__main__":
