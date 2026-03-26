@@ -37,6 +37,19 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
+def _(embeddings, mo, pd, scatter_plot, words):
+    _df = pd.DataFrame({"word": words, "x": embeddings[:, 0], "y": embeddings[:, 1]})
+    _chart = scatter_plot(_df, _df, title="Static Word Embeddings", width=400, height=400)
+
+    return mo.vstack(
+        [
+            _chart,
+        ],
+        align="center",
+    )
+
+
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     The simplest idea: compute a weighted average of all word vectors in the sentence.
@@ -1240,20 +1253,6 @@ def _(mo):
     slider_river = mo.ui.slider(0, 1, 0.05, value=0.25, label="river")
     slider_shore = mo.ui.slider(0, 1, 0.05, value=0.25, label="shore")
     return slider_bank, slider_loan, slider_money, slider_river, slider_shore
-
-
-@app.cell(hide_code=True)
-def _(embeddings, mo, pd, scatter_plot, words):
-    _df = pd.DataFrame({"word": words, "x": embeddings[:, 0], "y": embeddings[:, 1]})
-    _chart = scatter_plot(_df, _df, title="Static Word Embeddings", width=400, height=400)
-
-    mo.vstack(
-        [
-            _chart,
-        ],
-        align="center",
-    )
-    return
 
 
 @app.cell(hide_code=True)
