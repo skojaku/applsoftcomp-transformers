@@ -190,16 +190,22 @@ def _(
 
     act_pos = get_activation(_pos, _layer)
     act_neg = get_activation(_neg, _layer)
-    steering_vector = act_pos - act_neg
 
-    # Normalize for consistent steering strength across different prompt pairs
+    # Normalize each activation to unit length before taking the difference.
+    # Without this, a prompt with a much larger activation norm would dominate
+    # the steering direction, and the "contrast" would be lost.
+    act_pos_normed = act_pos / act_pos.norm()
+    act_neg_normed = act_neg / act_neg.norm()
+    steering_vector = act_pos_normed - act_neg_normed
+
+    # Normalize the final vector to unit length so α directly controls magnitude
     steering_vector_normed = steering_vector / steering_vector.norm()
 
     mo.md(
         f"""
-    **Steering vector built** from "{_pos}" vs "{_neg}" at layer {_layer}.
+    **Steering vector built** from "{_pos}" (norm {act_pos.norm().item():.0f}) vs "{_neg}" (norm {act_neg.norm().item():.0f}) at layer {_layer}.
 
-    The raw steering vector has norm **{steering_vector.norm().item():.2f}**. We normalize it to unit length so the coefficient $\\alpha$ directly controls the magnitude of the nudge.
+    We normalize each activation to unit length before taking the difference. This ensures both prompts contribute equally to the steering direction regardless of their raw magnitudes. The final steering vector is also unit-length, so $\\alpha$ directly controls the nudge strength.
     """
     )
     return (steering_vector_normed,)
@@ -408,7 +414,7 @@ def _(
     for layer_i in range(n_layers):
         _act_p = get_activation(_pos, layer_i)
         _act_n = get_activation(_neg, layer_i)
-        _sv = _act_p - _act_n
+        _sv = _act_p / _act_p.norm() - _act_n / _act_n.norm()
         _sv_normed = _sv / _sv.norm()
         norms_by_layer.append(_sv.norm().item())
 
