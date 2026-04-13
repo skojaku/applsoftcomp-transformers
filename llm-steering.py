@@ -75,7 +75,7 @@ def _():
 
     torch.set_grad_enabled(False)
 
-    model_name = "HuggingFaceTB/SmolLM2-360M-Instruct"
+    model_name = "HuggingFaceTB/SmolLM2-1.7B-Instruct"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16)
     model.eval()
@@ -197,13 +197,12 @@ def _(
     act_pos_normed = act_pos / act_pos.norm()
     act_neg_normed = act_neg / act_neg.norm()
     steering_vector = act_pos_normed - act_neg_normed
-    steering_vector = steering_vector / steering_vector.norm()
 
     mo.md(
         f"""
     **Steering vector built** from "{_pos}" vs "{_neg}" at layer {_layer}.
 
-    The steering direction is a unit vector computed from normalized activations. The coefficient $\\alpha$ directly controls the perturbation magnitude added to the hidden states.
+    $\\mathbf{{v}} = \\hat{{\\mathbf{{h}}}}_{{\\text{{pos}}}} - \\hat{{\\mathbf{{h}}}}_{{\\text{{neg}}}}$, with norm **{steering_vector.norm().item():.2f}** (activations normalized to unit length before differencing).
     """
     )
     return (steering_vector,)
@@ -238,7 +237,7 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    coeff_slider = mo.ui.slider(-150, 150, value=0, step=10, label="Steering coefficient α")
+    coeff_slider = mo.ui.slider(-550, 550, value=0, step=0.1, label="Steering coefficient α")
     generation_prompt = mo.ui.text(value="I think this movie is", label="Generation prompt")
     max_tokens_slider = mo.ui.slider(10, 100, value=20, step=10, label="Max new tokens")
 
@@ -284,11 +283,11 @@ def _(
 
     # Generate with steering
     with apply_steering(model, _layer, steering_vector, _coeff):
-        steered_ids = model.generate(**inputs, max_new_tokens=_max_tokens, temperature=0.7, do_sample=True)
+        steered_ids = model.generate(**inputs, max_new_tokens=_max_tokens, temperature=0.5, do_sample=True)
     steered_text = tokenizer.decode(steered_ids[0], skip_special_tokens=True)
 
     # Generate without steering for comparison
-    baseline_ids = model.generate(**inputs, max_new_tokens=_max_tokens, temperature=0.7, do_sample=True)
+    baseline_ids = model.generate(**inputs, max_new_tokens=_max_tokens, temperature=0.5, do_sample=True)
     baseline_text = tokenizer.decode(baseline_ids[0], skip_special_tokens=True)
 
     print(f"=== Baseline ===\n{baseline_text}\n")
