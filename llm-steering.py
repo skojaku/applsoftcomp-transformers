@@ -190,26 +190,16 @@ def _(
 
     act_pos = get_activation(_pos, _layer)
     act_neg = get_activation(_neg, _layer)
-
-    # Normalize each activation to unit length BEFORE differencing.
-    # Without this, the activation with larger norm dominates the difference,
-    # and the steering vector just points toward one prompt rather than
-    # capturing the meaningful direction between the two concepts.
-    act_pos_normed = act_pos / act_pos.norm()
-    act_neg_normed = act_neg / act_neg.norm()
-    steering_vector = act_pos_normed - act_neg_normed
-
-    # Normalize the final steering vector so alpha directly controls magnitude
-    steering_vector_normed = steering_vector / steering_vector.norm()
+    steering_vector = act_pos - act_neg
 
     mo.md(
         f"""
     **Steering vector built** from "{_pos}" vs "{_neg}" at layer {_layer}.
 
-    The raw steering vector has norm **{steering_vector.norm().item():.2f}**. We normalize it to unit length so the coefficient $\\alpha$ directly controls the magnitude of the nudge.
+    $\\mathbf{{v}} = \\mathbf{{h}}_{{\\text{{pos}}}} - \\mathbf{{h}}_{{\\text{{neg}}}}$, with norm **{steering_vector.norm().item():.2f}**.
     """
     )
-    return (steering_vector_normed,)
+    return (steering_vector,)
 
 
 @app.cell(hide_code=True)
@@ -241,7 +231,7 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    coeff_slider = mo.ui.slider(-20, 20, value=0, step=1, label="Steering coefficient α")
+    coeff_slider = mo.ui.slider(-0.01, 0.01, value=0, step=0.001, label="Steering coefficient α")
     generation_prompt = mo.ui.text(value="I think this movie is", label="Generation prompt")
     max_tokens_slider = mo.ui.slider(10, 100, value=20, step=10, label="Max new tokens")
 
@@ -256,7 +246,7 @@ def _(
     layer_slider,
     max_tokens_slider,
     model,
-    steering_vector_normed,
+    steering_vector,
     tokenizer,
 ):
     from contextlib import contextmanager
@@ -286,7 +276,7 @@ def _(
     inputs = tokenizer(_prompt, return_tensors="pt")
 
     # Generate with steering
-    with apply_steering(model, _layer, steering_vector_normed, _coeff):
+    with apply_steering(model, _layer, steering_vector, _coeff):
         steered_ids = model.generate(**inputs, max_new_tokens=_max_tokens, temperature=0.7, do_sample=True)
     steered_text = tokenizer.decode(steered_ids[0], skip_special_tokens=True)
 
@@ -318,7 +308,7 @@ def _(
     model,
     np,
     plt,
-    steering_vector_normed,
+    steering_vector,
     tokenizer,
     torch,
 ):
@@ -336,8 +326,8 @@ def _(
     # Get logits with steering
     def _steer_hook(module, input, output):
         if isinstance(output, tuple):
-            return (output[0] + _coeff * steering_vector_normed,) + output[1:]
-        return output + _coeff * steering_vector_normed
+            return (output[0] + _coeff * steering_vector,) + output[1:]
+        return output + _coeff * steering_vector
 
 
     handle = model.model.layers[_layer].register_forward_hook(_steer_hook)
@@ -415,10 +405,7 @@ def _(
     for layer_i in range(n_layers):
         _act_p = get_activation(_pos, layer_i)
         _act_n = get_activation(_neg, layer_i)
-        # Per-activation normalization before differencing
-        _act_p_normed = _act_p / _act_p.norm()
-        _act_n_normed = _act_n / _act_n.norm()
-        _sv = _act_p_normed - _act_n_normed
+        _sv = _act_p - _act_n
         _sv_normed = _sv / _sv.norm()
         norms_by_layer.append(_sv.norm().item())
 
