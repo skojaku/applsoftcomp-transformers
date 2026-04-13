@@ -28,7 +28,9 @@ def _(mo):
 
     When you chat with an LLM, you influence its output through your prompt. But what if you could reach inside the model and nudge its internal representations directly? That is the idea behind **activation steering**: instead of asking the model nicely, you add a carefully chosen vector to its hidden states during the forward pass, pushing its behavior in a direction you choose.
 
-    In this module, we will build a steering vector from scratch using SmolLM2 and plain PyTorch. We will see how a simple vector addition can shift the model's personality, making it more positive, more negative, or something else entirely. No special libraries needed, just PyTorch hooks.
+    In this module, we will build a steering vector from scratch using Gemma 3 1B and plain PyTorch. We will see how a simple vector addition can shift the model's personality, making it more positive, more negative, or something else entirely. No special libraries needed, just PyTorch hooks.
+
+    This approach is inspired by Anthropic's famous [Golden Gate Claude](https://www.anthropic.com/research/golden-gate-claude) experiment, where researchers made Claude obsessively reference the Golden Gate Bridge by modifying its activations. A recent reproduction study by [Louapre (2025)](https://huggingface.co/blog/davidlouapre/eiffel-tower-llama) explored this technique systematically with open-source models, revealing that the "sweet spot" for steering strength is surprisingly narrow and that clamping activations works better than simple addition.
     """)
     return
 
@@ -49,13 +51,15 @@ def _(mo):
 
     3. **Compute the difference.** The vector $\mathbf{v}_{\text{steer}} = \mathbf{a}_{\text{positive}} - \mathbf{a}_{\text{negative}}$ points in the direction of the concept you want to amplify.
 
-    During generation, you add $\alpha \cdot \mathbf{v}_{\text{steer}}$ to the residual stream at that layer, where $\alpha$ controls the strength. Positive $\alpha$ pushes toward the positive pole, negative $\alpha$ pushes toward the negative pole, and $\alpha = 0$ leaves the model unchanged.
+    During generation, you modify the residual stream at that layer. The simplest approach is **additive steering**, where you add a scaled version of the steering vector:
 
     $$
     \mathbf{h}'_\ell = \mathbf{h}_\ell + \alpha \cdot \mathbf{v}_{\text{steer}}
     $$
 
-    Let us build this step by step.
+    An alternative is **clamping**, where instead of adding, you project the activation onto the steering direction and force it to a fixed value. Clamping prevents runaway activations when the model's hidden state already points strongly in the steering direction. Anthropic used clamping in their Golden Gate Claude demo, and [Louapre (2025)](https://huggingface.co/blog/davidlouapre/eiffel-tower-llama) confirmed it improves concept inclusion without harming fluency.
+
+    In both cases, $\alpha$ controls the strength. Positive $\alpha$ pushes toward the positive pole, negative $\alpha$ pushes the other way, and $\alpha = 0$ leaves the model unchanged. Let us build this step by step.
     """)
     return
 
@@ -65,7 +69,7 @@ def _(mo):
     mo.md(r"""
     ## Step 1: Load the Model
 
-    We will use HuggingFace's SmolLM2-360M-Instruct, a compact language model with 360 million parameters. It is small enough to run comfortably on a CPU (about 720 MB in bfloat16) yet capable enough to produce coherent text that responds visibly to steering. We load it with standard PyTorch and the `transformers` library, no special interpretability frameworks needed.
+    We will use Google's Gemma 3 1B-IT, a compact instruction-tuned model with about 1 billion parameters. To keep memory usage manageable on a CPU, we load it with **int8 quantization** via the `optimum-quanto` library. This cuts memory roughly in half while preserving PyTorch's hook mechanism (unlike GGUF quantization, which bypasses PyTorch entirely). No special interpretability frameworks needed, just `transformers` and `torch`.
     """)
     return
 
@@ -232,18 +236,13 @@ def _(mo):
 
     We wrap the hook in a Python context manager so it is automatically cleaned up after generation finishes. This is important: a forgotten hook would silently alter every future forward pass.
 
-    ```python
-    @contextmanager
-    def steering_hook(model, layer_idx, vector, coeff):
-        def hook(module, input, output):
-            return (output[0] + coeff * vector,) + output[1:]
+    You can choose between two steering modes:
 
-        handle = model.model.layers[layer_idx].register_forward_hook(hook)
-        try:
-            yield
-        finally:
-            handle.remove()  # always clean up
-    ```
+    **Add** mode simply adds $\alpha \cdot \mathbf{v}$ to the hidden state. This is the most intuitive approach, but can lead to runaway activations when $\alpha$ is large.
+
+    **Clamp** mode projects the hidden state onto the steering direction and replaces that component with $\alpha$, leaving the orthogonal component untouched. This prevents the model from "fighting back" against the steering by activating suppressor features.
+
+    We also apply a mild **repetition penalty** (1.1) during generation. [Louapre (2025)](https://huggingface.co/blog/davidlouapre/eiffel-tower-llama) found this significantly reduces the repetitive gibberish that often appears when steering is strong, improving fluency without compromising the steering effect.
 
     Adjust the coefficient $\alpha$ below. At $\alpha = 0$, the model behaves normally. Positive values push toward the positive prompt's meaning, negative values push the other way.
     """)
@@ -255,9 +254,13 @@ def _(mo):
     coeff_slider = mo.ui.slider(-550, 550, value=0, step=0.1, label="Steering coefficient α")
     generation_prompt = mo.ui.text(value="I watched a new SF movie and my friend said", label="Generation prompt")
     max_tokens_slider = mo.ui.slider(10, 100, value=20, step=10, label="Max new tokens")
+    steering_mode = mo.ui.dropdown(["add", "clamp"], value="add", label="Steering mode")
 
-    mo.hstack([generation_prompt, coeff_slider, max_tokens_slider])
-    return coeff_slider, generation_prompt, max_tokens_slider
+    mo.vstack([
+        mo.hstack([generation_prompt, coeff_slider]),
+        mo.hstack([max_tokens_slider, steering_mode]),
+    ])
+    return coeff_slider, generation_prompt, max_tokens_slider, steering_mode
 
 
 @app.cell
@@ -266,21 +269,37 @@ def _(
     generation_prompt,
     layer_slider,
     max_tokens_slider,
+    mo,
     model,
+    steering_mode,
     steering_vector,
     tokenizer,
+    torch,
 ):
     from contextlib import contextmanager
 
 
     @contextmanager
-    def apply_steering(model, layer_idx, vector, coeff):
-        """Context manager that steers a layer's output during forward passes."""
+    def apply_steering(model, layer_idx, vector, coeff, mode="add"):
+        """Context manager that steers a layer's output during forward passes.
+
+        mode="add":   h' = h + coeff * v
+        mode="clamp": project h onto v, replace that component with coeff,
+                      keep the orthogonal component unchanged.
+        """
+        v_normed = vector / vector.norm()
 
         def hook(module, input, output):
+            h = output[0] if isinstance(output, tuple) else output
+            if mode == "clamp":
+                # Project onto steering direction and replace
+                proj = torch.sum(h * v_normed, dim=-1, keepdim=True)
+                h_steered = h + (coeff - proj) * v_normed
+            else:
+                h_steered = h + coeff * vector
             if isinstance(output, tuple):
-                return (output[0] + coeff * vector,) + output[1:]
-            return output + coeff * vector
+                return (h_steered,) + output[1:]
+            return h_steered
 
         handle = model.model.layers[layer_idx].register_forward_hook(hook)
         try:
@@ -293,21 +312,37 @@ def _(
     _coeff = coeff_slider.value
     _prompt = generation_prompt.value
     _max_tokens = max_tokens_slider.value
+    _mode = steering_mode.value
 
     inputs = tokenizer(_prompt, return_tensors="pt")
 
+    _gen_kwargs = dict(
+        max_new_tokens=_max_tokens,
+        temperature=0.7,
+        do_sample=True,
+        repetition_penalty=1.1,
+    )
+
     # Generate with steering
-    with apply_steering(model, _layer, steering_vector, _coeff):
-        steered_ids = model.generate(**inputs, max_new_tokens=_max_tokens, temperature=0.7, do_sample=True)
+    with apply_steering(model, _layer, steering_vector, _coeff, mode=_mode):
+        steered_ids = model.generate(**inputs, **_gen_kwargs)
     steered_text = tokenizer.decode(steered_ids[0], skip_special_tokens=True)
 
     # Generate without steering for comparison
-    baseline_ids = model.generate(**inputs, max_new_tokens=_max_tokens, temperature=0.7, do_sample=True)
+    baseline_ids = model.generate(**inputs, **_gen_kwargs)
     baseline_text = tokenizer.decode(baseline_ids[0], skip_special_tokens=True)
 
-    print(f"=== Baseline ===\n{baseline_text}\n")
-    print(f"=== Steered (a = {_coeff}) ===\n{steered_text}")
-    return
+    mo.hstack([
+        mo.vstack([
+            mo.md("**Baseline** ($\\alpha = 0$)"),
+            mo.md(f"> {baseline_text}"),
+        ]),
+        mo.vstack([
+            mo.md(f"**Steered** ($\\alpha = {_coeff}$, mode={_mode})"),
+            mo.md(f"> {steered_text}"),
+        ]),
+    ], widths="equal", gap=1)
+    return (apply_steering,)
 
 
 @app.cell(hide_code=True)
@@ -475,7 +510,7 @@ def _(mo):
     Each pair of prompts defines a different direction in the model's activation space, and each produces a qualitatively different effect on the generated text. The model's internal geometry encodes far more structure than any single prompt can reveal.
 
     ::: {.callout-tip title="Try it yourself"}
-    Experiment with extreme values of $\alpha$ (like 15 or $-$15). What happens to the text? At some point, the steering overwhelms the model's natural dynamics and the output degenerates into nonsense. Finding the sweet spot, where steering is strong enough to matter but gentle enough to preserve coherence, is part of the art.
+    Experiment with extreme values of $\alpha$. What happens to the text? At some point, the steering overwhelms the model's natural dynamics and the output degenerates into repetitive nonsense. [Louapre (2025)](https://huggingface.co/blog/davidlouapre/eiffel-tower-llama) found that the optimal $\alpha$ is roughly **half the activation norm** at the target layer, and the window of useful values is surprisingly narrow. Try switching between "add" and "clamp" modes to see how clamping prevents some of the degeneration at high $\alpha$.
     :::
     """)
     return
@@ -490,7 +525,7 @@ def _(mo):
 
     This is a powerful idea with deep connections to mechanistic interpretability. If we can find the directions that encode specific concepts, we can not only steer the model but also understand what it has learned. Steering vectors are one of the simplest tools in the activation engineering toolkit, and they hint at a future where we control AI systems not just through their inputs and outputs, but through their internal representations.
 
-    The limitations are real. Steering with a single vector is blunt. It affects every token position equally. It assumes linearity in a system that is fundamentally nonlinear. And the choice of layer, prompt pair, and coefficient all matter in ways that are not fully understood. But as a demonstration of what is possible when you open the hood, it is compelling.
+    The limitations are real. Steering with a single vector is blunt. It affects every token position equally. It assumes linearity in a system that is fundamentally nonlinear. The choice of layer, prompt pair, and coefficient all matter in ways that are not fully understood. Research by [Louapre (2025)](https://huggingface.co/blog/davidlouapre/eiffel-tower-llama) showed that even with careful optimization, simple prompting still outperforms activation steering on objective metrics. The [AxBench benchmark](https://arxiv.org/abs/2501.17148) reached a similar conclusion. But steering reveals something prompting cannot: what the model has learned to represent internally, and how those representations drive behavior. As a window into the mechanics of language models, it is compelling.
     """)
     return
 
