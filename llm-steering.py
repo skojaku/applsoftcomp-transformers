@@ -197,12 +197,13 @@ def _(
     act_pos_normed = act_pos / act_pos.norm()
     act_neg_normed = act_neg / act_neg.norm()
     steering_vector = act_pos_normed - act_neg_normed
+    steering_vector = steering_vector / steering_vector.norm()
 
     mo.md(
         f"""
     **Steering vector built** from "{_pos}" vs "{_neg}" at layer {_layer}.
 
-    $\\mathbf{{v}} = \\hat{{\\mathbf{{h}}}}_{{\\text{{pos}}}} - \\hat{{\\mathbf{{h}}}}_{{\\text{{neg}}}}$, with norm **{steering_vector.norm().item():.2f}** (activations normalized to unit length before differencing).
+    The steering direction is a unit vector computed from normalized activations. The coefficient $\\alpha$ directly controls the perturbation magnitude added to the hidden states.
     """
     )
     return (steering_vector,)
@@ -237,7 +238,7 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    coeff_slider = mo.ui.slider(-20, 20, value=0, step=1, label="Steering coefficient α")
+    coeff_slider = mo.ui.slider(-150, 150, value=0, step=10, label="Steering coefficient α")
     generation_prompt = mo.ui.text(value="I think this movie is", label="Generation prompt")
     max_tokens_slider = mo.ui.slider(10, 100, value=20, step=10, label="Max new tokens")
 
