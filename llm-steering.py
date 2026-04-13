@@ -115,7 +115,10 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.center(mo.image("figs/forward-hook.svg", alt="How PyTorch Forward Hooks Work"))
+    from pathlib import Path
+
+    _svg_hook = Path("figs/forward-hook.svg").read_text()
+    mo.md(f"<center>{_svg_hook}</center>")
     return
 
 
@@ -247,7 +250,10 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.center(mo.image("figs/steering-alpha.svg", alt="The Effect of Steering Coefficient"))
+    from pathlib import Path as _Path
+
+    _svg_alpha = _Path("figs/steering-alpha.svg").read_text()
+    mo.md(f"<center>{_svg_alpha}</center>")
     return
 
 
