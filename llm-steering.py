@@ -109,9 +109,19 @@ def _(mo):
     ## Step 2: Extract Activations with PyTorch Hooks
 
     To build a steering vector, we need to peek inside the model and read the hidden states at a specific layer. PyTorch provides a mechanism for this called **forward hooks**. A hook is a function that PyTorch calls every time a module runs its forward pass. We attach a hook to a decoder layer, and it captures the output activations for us.
+    """)
+    return
 
-    ![How PyTorch Forward Hooks Work](figs/forward-hook.svg)
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.center(mo.image("figs/forward-hook.svg", alt="How PyTorch Forward Hooks Work"))
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     The function below extracts the activation of the **last token** at a given layer. Why the last token? In autoregressive models, the last token's hidden state is the one that determines what comes next. It has accumulated the most context from the input.
 
     Let us look at what the hook mechanism looks like under the hood.
@@ -231,9 +241,19 @@ def _(mo):
     ## Step 4: Steer the Model
 
     Now for the fun part. We attach a hook that adds our steering vector to the chosen layer during generation. PyTorch calls this hook on every forward pass, which means the steering is applied at every token generation step.
+    """)
+    return
 
-    ![The Effect of Steering Coefficient](figs/steering-alpha.svg)
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.center(mo.image("figs/steering-alpha.svg", alt="The Effect of Steering Coefficient"))
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     We wrap the hook in a Python context manager so it is automatically cleaned up after generation finishes. This is important: a forgotten hook would silently alter every future forward pass.
 
     You can choose between two steering modes:
