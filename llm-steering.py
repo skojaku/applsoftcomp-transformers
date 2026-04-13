@@ -19,8 +19,7 @@ app = marimo.App(width="medium", css_file="marimo_lecture_note_theme.css")
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
+    mo.md(r"""
     # Steering a Language Model from the Inside
 
     *An Interactive Guide to Activation Steering*
@@ -30,14 +29,13 @@ def _(mo):
     When you chat with an LLM, you influence its output through your prompt. But what if you could reach inside the model and nudge its internal representations directly? That is the idea behind **activation steering**: instead of asking the model nicely, you add a carefully chosen vector to its hidden states during the forward pass, pushing its behavior in a direction you choose.
 
     In this module, we will build a steering vector from scratch using Gemma-2-2B and TransformerLens. We will see how a simple vector addition can shift the model's personality, making it more positive, more negative, or something else entirely.
-    """
-    )
+    """)
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
+    mo.md(r"""
     ## The Core Idea
 
     A transformer processes text by passing it through a sequence of layers. At each layer, the model maintains a **residual stream**, a vector of numbers that encodes everything the model "knows" about the text so far. The key insight is that directions in this vector space correspond to meaningful concepts.
@@ -57,19 +55,18 @@ def _(mo):
     $$
 
     Let us build this step by step.
-    """
-    )
+    """)
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
+    mo.md(r"""
     ## Step 1: Load the Model
 
     We will use Google's Gemma-2-2B (2.6 billion parameters) via TransformerLens, a library designed for mechanistic interpretability. TransformerLens wraps Hugging Face models and exposes hooks at every layer, making it easy to read and modify internal activations. Gemma-2-2B is small enough to run on a single GPU (or CPU, slowly) but powerful enough to produce coherent text that responds clearly to steering.
-    """
-    )
+    """)
+    return
 
 
 @app.cell
@@ -81,27 +78,28 @@ def _():
 
     torch.set_grad_enabled(False)
 
-    model = HookedTransformer.from_pretrained("gemma-2-2b")
-    print(f"Model: {model.cfg.model_name}")
+    # Use bfloat16 to halve memory and speed up inference
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = HookedTransformer.from_pretrained("gemma-2-2b", dtype="bfloat16", device=device)
+    print(f"Model: {model.cfg.model_name} (dtype={model.cfg.dtype}, device={device})")
     print(f"Layers: {model.cfg.n_layers}, Hidden dim: {model.cfg.d_model}")
-    return model, torch, np, transformer_lens, HookedTransformer
+    return model, np, torch
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
+    mo.md(r"""
     ## Step 2: Extract Activations from Contrasting Prompts
 
     To build a steering vector, we need two prompts that represent opposite ends of some behavioral axis. Let us start with a simple sentiment axis: "Love" versus "Hate". We run each prompt through the model and cache the residual stream activations at every layer.
 
     The function below extracts the activation of the **last token** at a given layer. Why the last token? In autoregressive models like Gemma, the last token's residual stream is the one that determines what token comes next. It has accumulated the most context.
-    """
-    )
+    """)
+    return
 
 
 @app.cell
-def _(model, torch):
+def _(model):
     def get_activation(prompt, layer):
         """Extract the residual stream activation of the last token at a given layer."""
         _, cache = model.run_with_cache(prompt)
@@ -120,13 +118,12 @@ def _(model, torch):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
+    mo.md(r"""
     ## Step 3: Build the Steering Vector
 
     The steering vector is simply the difference between the two activations. This vector points from the "negative" concept toward the "positive" concept in the model's representation space.
-    """
-    )
+    """)
+    return
 
 
 @app.cell
@@ -136,10 +133,17 @@ def _(mo):
     negative_prompt_input = mo.ui.text(value="Hate", label="Negative prompt")
 
     mo.hstack([positive_prompt_input, negative_prompt_input, layer_slider])
+    return layer_slider, negative_prompt_input, positive_prompt_input
 
 
 @app.cell
-def _(get_activation, layer_slider, positive_prompt_input, negative_prompt_input, np, mo):
+def _(
+    get_activation,
+    layer_slider,
+    mo,
+    negative_prompt_input,
+    positive_prompt_input,
+):
     _layer = layer_slider.value
     _pos = positive_prompt_input.value
     _neg = negative_prompt_input.value
@@ -158,19 +162,19 @@ def _(get_activation, layer_slider, positive_prompt_input, negative_prompt_input
     The raw steering vector has norm **{steering_vector.norm().item():.2f}**. We normalize it to unit length so the coefficient $\\alpha$ directly controls the magnitude of the nudge.
     """
     )
+    return (steering_vector_normed,)
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
+    mo.md(r"""
     ## Step 4: Steer the Model
 
     Now for the fun part. We hook into the model's forward pass and add our steering vector at the chosen layer. TransformerLens makes this straightforward: we define a hook function that modifies the residual stream in-place, then run generation with that hook active.
 
     Adjust the coefficient $\alpha$ below. At $\alpha = 0$, the model behaves normally. Positive values push toward the positive prompt's meaning, negative values push the other way.
-    """
-    )
+    """)
+    return
 
 
 @app.cell
@@ -180,57 +184,74 @@ def _(mo):
     max_tokens_slider = mo.ui.slider(10, 100, value=50, step=10, label="Max new tokens")
 
     mo.hstack([generation_prompt, coeff_slider, max_tokens_slider])
+    return coeff_slider, generation_prompt, max_tokens_slider
 
 
 @app.cell
-def _(model, steering_vector_normed, layer_slider, coeff_slider, generation_prompt, max_tokens_slider, transformer_lens):
+def _(
+    coeff_slider,
+    generation_prompt,
+    layer_slider,
+    max_tokens_slider,
+    model,
+    steering_vector_normed,
+):
     _layer = layer_slider.value
     _coeff = coeff_slider.value
     _prompt = generation_prompt.value
     _max_tokens = max_tokens_slider.value
 
+
     # Define the steering hook
     def steering_hook(activation, hook):
-        # activation shape: (batch, seq_len, d_model)
-        # Add steering vector to all token positions
         activation[:, :, :] += _coeff * steering_vector_normed
         return activation
 
-    # Generate with the hook
+
+    # Generate with hook
     hook_name = f"blocks.{_layer}.hook_resid_post"
-    steered_output = model.generate(
-        _prompt,
-        max_new_tokens=_max_tokens,
-        temperature=0.7,
-        fwd_hooks=[(hook_name, steering_hook)],
-    )
-    steered_text = model.tokenizer.decode(steered_output[0])
-
-    # Also generate without steering for comparison
-    baseline_output = model.generate(
+    model.add_hook(hook_name, steering_hook)
+    steered_text = model.generate(
         _prompt,
         max_new_tokens=_max_tokens,
         temperature=0.7,
     )
-    baseline_text = model.tokenizer.decode(baseline_output[0])
+    model.reset_hooks()
 
-    print(f"=== Baseline (α = 0) ===\n{baseline_text}\n")
-    print(f"=== Steered (α = {_coeff}) ===\n{steered_text}")
+    # Generate without steering for comparison
+    baseline_text = model.generate(
+        _prompt,
+        max_new_tokens=_max_tokens,
+        temperature=0.7,
+    )
+
+    print(f"=== Baseline ===\n{baseline_text}\n")
+    print(f"=== Steered (a = {_coeff}) ===\n{steered_text}")
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
+    mo.md(r"""
     ## Visualizing the Effect on Token Probabilities
 
     Steering does not just change the final text. It reshapes the entire probability distribution over the vocabulary at each step. Let us look at the top predicted tokens for the next word, with and without steering, to see exactly how the vector shifts the model's preferences.
-    """
-    )
+    """)
+    return
 
 
 @app.cell
-def _(model, steering_vector_normed, layer_slider, coeff_slider, generation_prompt, torch, np, plt, mo):
+def _(
+    coeff_slider,
+    generation_prompt,
+    layer_slider,
+    mo,
+    model,
+    np,
+    plt,
+    steering_vector_normed,
+    torch,
+):
     _layer = layer_slider.value
     _coeff = coeff_slider.value
     _prompt = generation_prompt.value
@@ -277,23 +298,32 @@ def _(model, steering_vector_normed, layer_slider, coeff_slider, generation_prom
     plt.tight_layout()
 
     mo.as_html(fig_prob)
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
+    mo.md(r"""
     ## How Layer Choice Matters
 
     Not all layers are equally useful for steering. Early layers encode low-level features (token identity, position). Middle layers encode more abstract concepts (sentiment, topic). Late layers are close to the output and can be too disruptive to modify.
 
     The visualization below shows the cosine similarity between the steering vector at each layer and the final layer's unembedding directions for a few sentiment-related tokens. Higher similarity means that layer's steering vector is more "aligned" with pushing specific tokens in or out of the output.
-    """
-    )
+    """)
+    return
 
 
 @app.cell
-def _(model, get_activation, positive_prompt_input, negative_prompt_input, torch, np, plt, mo):
+def _(
+    get_activation,
+    mo,
+    model,
+    negative_prompt_input,
+    np,
+    plt,
+    positive_prompt_input,
+    torch,
+):
     _pos = positive_prompt_input.value
     _neg = negative_prompt_input.value
 
@@ -333,12 +363,12 @@ def _(model, get_activation, positive_prompt_input, negative_prompt_input, torch
 
     plt.tight_layout()
     mo.as_html(fig_layer)
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
+    mo.md(r"""
     ## Experimenting with Different Axes
 
     Sentiment is just one axis you can steer along. Try changing the positive and negative prompts above to explore other directions. Here are some ideas to try:
@@ -356,14 +386,13 @@ def _(mo):
     ::: {.callout-tip title="Try it yourself"}
     Experiment with extreme values of $\alpha$ (like 15 or $-$15). What happens to the text? At some point, the steering overwhelms the model's natural dynamics and the output degenerates into nonsense. Finding the sweet spot, where steering is strong enough to matter but gentle enough to preserve coherence, is part of the art.
     :::
-    """
-    )
+    """)
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
+    mo.md(r"""
     ## What Is Really Happening?
 
     Activation steering works because transformer residual streams form a roughly linear representation space. Concepts like sentiment, topic, and style correspond to directions in this space. When we add a steering vector, we are performing a linear intervention: shifting the model's internal state along a meaningful direction without retraining.
@@ -371,19 +400,21 @@ def _(mo):
     This is a powerful idea with deep connections to mechanistic interpretability. If we can find the directions that encode specific concepts, we can not only steer the model but also understand what it has learned. Steering vectors are one of the simplest tools in the activation engineering toolkit, and they hint at a future where we control AI systems not just through their inputs and outputs, but through their internal representations.
 
     The limitations are real. Steering with a single vector is blunt. It affects every token position equally. It assumes linearity in a system that is fundamentally nonlinear. And the choice of layer, prompt pair, and coefficient all matter in ways that are not fully understood. But as a demonstration of what is possible when you open the hood, it is compelling.
-    """
-    )
+    """)
+    return
 
 
 @app.cell
 def _():
     import marimo as mo
+
     return (mo,)
 
 
 @app.cell
 def _():
     import matplotlib.pyplot as plt
+
     return (plt,)
 
 
