@@ -38,13 +38,9 @@ def _(mo):
 
     A transformer processes text by passing it through a sequence of layers. At each layer, the model maintains a **residual stream**, a vector of numbers that encodes everything the model "knows" about the text so far. The key insight is that directions in this vector space correspond to meaningful concepts.
 
-    Activation steering works in three steps:
+    ![Activation Steering Overview](figs/steering-overview.svg)
 
-    1. **Pick two contrasting prompts.** For example, "Love" and "Hate". These represent the two poles of the behavior you want to control.
-
-    2. **Extract their residual stream activations** at a chosen layer. Each prompt produces a vector in the model's hidden space.
-
-    3. **Compute the difference.** The vector $\mathbf{v}_{\text{steer}} = \mathbf{a}_{\text{positive}} - \mathbf{a}_{\text{negative}}$ points in the direction of the concept you want to amplify.
+    Activation steering works in three steps. First, pick two contrasting prompts (for example, "Love" and "Hate") that represent the two poles of the behavior you want to control. Second, extract their residual stream activations at a chosen layer. Each prompt produces a vector in the model's hidden space. Third, compute the difference. We normalize each activation to unit length first, so that both prompts contribute equally regardless of magnitude. The resulting vector $\mathbf{v}_{\text{steer}} = \hat{\mathbf{a}}_{\text{positive}} - \hat{\mathbf{a}}_{\text{negative}}$ points in the direction of the concept you want to amplify.
 
     During generation, you add $\alpha \cdot \mathbf{v}_{\text{steer}}$ to the residual stream at that layer, where $\alpha$ controls the strength. Positive $\alpha$ pushes toward the positive pole, negative $\alpha$ pushes toward the negative pole, and $\alpha = 0$ leaves the model unchanged.
 
@@ -75,7 +71,7 @@ def _():
 
     torch.set_grad_enabled(False)
 
-    model_name = "HuggingFaceTB/SmolLM2-1.7B-Instruct"
+    model_name = "HuggingFaceTB/SmolLM2-360M-Instruct"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16)
     model.eval()
@@ -94,6 +90,8 @@ def _(mo):
     ## Step 2: Extract Activations with PyTorch Hooks
 
     To build a steering vector, we need to peek inside the model and read the hidden states at a specific layer. PyTorch provides a mechanism for this called **forward hooks**. A hook is a function that PyTorch calls every time a module runs its forward pass. We attach a hook to a decoder layer, and it captures the output activations for us.
+
+    ![How PyTorch Forward Hooks Work](figs/forward-hook.svg)
 
     The function below extracts the activation of the **last token** at a given layer. Why the last token? In autoregressive models, the last token's hidden state is the one that determines what comes next. It has accumulated the most context from the input.
 
@@ -215,6 +213,8 @@ def _(mo):
 
     Now for the fun part. We attach a hook that adds our steering vector to the chosen layer during generation. PyTorch calls this hook on every forward pass, which means the steering is applied at every token generation step.
 
+    ![The Effect of Steering Coefficient](figs/steering-alpha.svg)
+
     We wrap the hook in a Python context manager so it is automatically cleaned up after generation finishes. This is important: a forgotten hook would silently alter every future forward pass.
 
     ```python
@@ -238,7 +238,7 @@ def _(mo):
 @app.cell
 def _(mo):
     coeff_slider = mo.ui.slider(-550, 550, value=0, step=0.1, label="Steering coefficient α")
-    generation_prompt = mo.ui.text(value="I think this movie is", label="Generation prompt")
+    generation_prompt = mo.ui.text(value="I watched a new SF movie and my friend said", label="Generation prompt")
     max_tokens_slider = mo.ui.slider(10, 100, value=20, step=10, label="Max new tokens")
 
     mo.hstack([generation_prompt, coeff_slider, max_tokens_slider])
@@ -251,7 +251,6 @@ def _(
     generation_prompt,
     layer_slider,
     max_tokens_slider,
-    mo,
     model,
     steering_vector,
     tokenizer,
@@ -284,31 +283,15 @@ def _(
 
     # Generate with steering
     with apply_steering(model, _layer, steering_vector, _coeff):
-        steered_ids = model.generate(**inputs, max_new_tokens=_max_tokens, temperature=0.5, do_sample=True)
+        steered_ids = model.generate(**inputs, max_new_tokens=_max_tokens, temperature=0.7, do_sample=True)
     steered_text = tokenizer.decode(steered_ids[0], skip_special_tokens=True)
 
     # Generate without steering for comparison
-    baseline_ids = model.generate(**inputs, max_new_tokens=_max_tokens, temperature=0.5, do_sample=True)
+    baseline_ids = model.generate(**inputs, max_new_tokens=_max_tokens, temperature=0.7, do_sample=True)
     baseline_text = tokenizer.decode(baseline_ids[0], skip_special_tokens=True)
 
-    mo.hstack(
-        [
-            mo.vstack(
-                [
-                    mo.md("**Baseline** ($\\alpha = 0$)"),
-                    mo.md(f"> {baseline_text}"),
-                ]
-            ),
-            mo.vstack(
-                [
-                    mo.md(f"**Steered** ($\\alpha = {_coeff}$)"),
-                    mo.md(f"> {steered_text}"),
-                ]
-            ),
-        ],
-        widths="equal",
-        gap=1,
-    )
+    print(f"=== Baseline ===\n{baseline_text}\n")
+    print(f"=== Steered (a = {_coeff}) ===\n{steered_text}")
     return
 
 
