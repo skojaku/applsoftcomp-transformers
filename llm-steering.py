@@ -190,13 +190,19 @@ def _(
 
     act_pos = get_activation(_pos, _layer)
     act_neg = get_activation(_neg, _layer)
-    steering_vector = act_pos - act_neg
+
+    # Normalize each activation to unit length before differencing.
+    # Without this, the prompt with larger norm dominates the difference
+    # and the steering vector carries no information about the other prompt.
+    act_pos_normed = act_pos / act_pos.norm()
+    act_neg_normed = act_neg / act_neg.norm()
+    steering_vector = act_pos_normed - act_neg_normed
 
     mo.md(
         f"""
     **Steering vector built** from "{_pos}" vs "{_neg}" at layer {_layer}.
 
-    $\\mathbf{{v}} = \\mathbf{{h}}_{{\\text{{pos}}}} - \\mathbf{{h}}_{{\\text{{neg}}}}$, with norm **{steering_vector.norm().item():.2f}**.
+    $\\mathbf{{v}} = \\hat{{\\mathbf{{h}}}}_{{\\text{{pos}}}} - \\hat{{\\mathbf{{h}}}}_{{\\text{{neg}}}}$, with norm **{steering_vector.norm().item():.2f}** (activations normalized to unit length before differencing).
     """
     )
     return (steering_vector,)
@@ -231,7 +237,7 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    coeff_slider = mo.ui.slider(-0.01, 0.01, value=0, step=0.001, label="Steering coefficient α")
+    coeff_slider = mo.ui.slider(-20, 20, value=0, step=1, label="Steering coefficient α")
     generation_prompt = mo.ui.text(value="I think this movie is", label="Generation prompt")
     max_tokens_slider = mo.ui.slider(10, 100, value=20, step=10, label="Max new tokens")
 
@@ -394,7 +400,6 @@ def _(
     _neg = negative_prompt_input.value
 
     # The unembedding matrix maps hidden states to vocabulary logits
-    # For LlamaForCausalLM, this is model.lm_head.weight: (vocab_size, hidden_dim)
     unembed_weight = model.lm_head.weight.detach()
 
     # Compute steering vectors at each layer
@@ -405,7 +410,8 @@ def _(
     for layer_i in range(n_layers):
         _act_p = get_activation(_pos, layer_i)
         _act_n = get_activation(_neg, layer_i)
-        _sv = _act_p - _act_n
+        # Per-activation normalization before differencing
+        _sv = _act_p / _act_p.norm() - _act_n / _act_n.norm()
         _sv_normed = _sv / _sv.norm()
         norms_by_layer.append(_sv.norm().item())
 
