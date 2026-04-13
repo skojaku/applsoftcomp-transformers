@@ -44,7 +44,7 @@ def _(mo):
 
     2. **Extract their residual stream activations** at a chosen layer. Each prompt produces a vector in the model's hidden space.
 
-    3. **Compute the difference.** We first normalize each activation to unit length so that neither prompt dominates by sheer magnitude. The steering vector $\mathbf{v}_{\text{steer}} = \hat{\mathbf{a}}_{\text{positive}} - \hat{\mathbf{a}}_{\text{negative}}$ then points in the direction of the concept you want to amplify.
+    3. **Compute the difference.** The vector $\mathbf{v}_{\text{steer}} = \mathbf{a}_{\text{positive}} - \mathbf{a}_{\text{negative}}$ points in the direction of the concept you want to amplify.
 
     During generation, you add $\alpha \cdot \mathbf{v}_{\text{steer}}$ to the residual stream at that layer, where $\alpha$ controls the strength. Positive $\alpha$ pushes toward the positive pole, negative $\alpha$ pushes toward the negative pole, and $\alpha = 0$ leaves the model unchanged.
 
