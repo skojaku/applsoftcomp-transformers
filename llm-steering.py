@@ -5,7 +5,9 @@
 #     "numpy==2.4.3",
 #     "matplotlib==3.10.1",
 #     "torch>=2.0",
-#     "transformers>=4.40",
+#     "transformers>=4.45",
+#     "optimum-quanto==0.2.7",
+#     "accelerate==1.13.0",
 # ]
 # ///
 
@@ -38,9 +40,14 @@ def _(mo):
 
     A transformer processes text by passing it through a sequence of layers. At each layer, the model maintains a **residual stream**, a vector of numbers that encodes everything the model "knows" about the text so far. The key insight is that directions in this vector space correspond to meaningful concepts.
 
-    ![Activation Steering Overview](figs/steering-overview.svg)
 
-    Activation steering works in three steps. First, pick two contrasting prompts (for example, "Love" and "Hate") that represent the two poles of the behavior you want to control. Second, extract their residual stream activations at a chosen layer. Each prompt produces a vector in the model's hidden space. Third, compute the difference. We normalize each activation to unit length first, so that both prompts contribute equally regardless of magnitude. The resulting vector $\mathbf{v}_{\text{steer}} = \hat{\mathbf{a}}_{\text{positive}} - \hat{\mathbf{a}}_{\text{negative}}$ points in the direction of the concept you want to amplify.
+    Activation steering works in three steps:
+
+    1. **Pick two contrasting prompts.** For example, "Love" and "Hate". These represent the two poles of the behavior you want to control.
+
+    2. **Extract their residual stream activations** at a chosen layer. Each prompt produces a vector in the model's hidden space.
+
+    3. **Compute the difference.** The vector $\mathbf{v}_{\text{steer}} = \mathbf{a}_{\text{positive}} - \mathbf{a}_{\text{negative}}$ points in the direction of the concept you want to amplify.
 
     During generation, you add $\alpha \cdot \mathbf{v}_{\text{steer}}$ to the residual stream at that layer, where $\alpha$ controls the strength. Positive $\alpha$ pushes toward the positive pole, negative $\alpha$ pushes toward the negative pole, and $\alpha = 0$ leaves the model unchanged.
 
@@ -65,15 +72,22 @@ def _(mo):
 
 @app.cell
 def _():
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoModelForCausalLM, AutoTokenizer, QuantoConfig
     import torch
     import numpy as np
 
     torch.set_grad_enabled(False)
 
-    model_name = "HuggingFaceTB/SmolLM2-360M-Instruct"
+    model_name = "google/gemma-3-1b-it"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16)
+
+    # Load with int8 quantization via quanto: keeps the model in PyTorch
+    # so forward hooks still work, while cutting memory usage roughly in half
+    quant_config = QuantoConfig(weights="int8")
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        quantization_config=quant_config,
+    )
     model.eval()
 
     n_layers = model.config.num_hidden_layers
@@ -81,6 +95,7 @@ def _():
     print(f"Model: {model_name}")
     print(f"Layers: {n_layers}, Hidden dim: {hidden_dim}")
     print(f"Parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.0f}M")
+    print(f"Quantization: int8 (quanto)")
     return model, n_layers, np, tokenizer, torch
 
 
