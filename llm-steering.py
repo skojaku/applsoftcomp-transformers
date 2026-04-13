@@ -44,7 +44,7 @@ def _(mo):
 
     2. **Extract their residual stream activations** at a chosen layer. Each prompt produces a vector in the model's hidden space.
 
-    3. **Compute the difference.** The vector $\mathbf{v}_{\text{steer}} = \mathbf{a}_{\text{positive}} - \mathbf{a}_{\text{negative}}$ points in the direction of the concept you want to amplify.
+    3. **Compute the difference.** We first normalize each activation to unit length so that neither prompt dominates by sheer magnitude. The steering vector $\mathbf{v}_{\text{steer}} = \hat{\mathbf{a}}_{\text{positive}} - \hat{\mathbf{a}}_{\text{negative}}$ then points in the direction of the concept you want to amplify.
 
     During generation, you add $\alpha \cdot \mathbf{v}_{\text{steer}}$ to the residual stream at that layer, where $\alpha$ controls the strength. Positive $\alpha$ pushes toward the positive pole, negative $\alpha$ pushes toward the negative pole, and $\alpha = 0$ leaves the model unchanged.
 
@@ -77,7 +77,7 @@ def _():
 
     model_name = "HuggingFaceTB/SmolLM2-360M-Instruct"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(model_name, dtype=torch.bfloat16)
+    model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16)
     model.eval()
 
     n_layers = model.config.num_hidden_layers
@@ -191,21 +191,22 @@ def _(
     act_pos = get_activation(_pos, _layer)
     act_neg = get_activation(_neg, _layer)
 
-    # Normalize each activation to unit length before taking the difference.
-    # Without this, a prompt with a much larger activation norm would dominate
-    # the steering direction, and the "contrast" would be lost.
+    # Normalize each activation to unit length BEFORE differencing.
+    # Without this, the activation with larger norm dominates the difference,
+    # and the steering vector just points toward one prompt rather than
+    # capturing the meaningful direction between the two concepts.
     act_pos_normed = act_pos / act_pos.norm()
     act_neg_normed = act_neg / act_neg.norm()
     steering_vector = act_pos_normed - act_neg_normed
 
-    # Normalize the final vector to unit length so α directly controls magnitude
+    # Normalize the final steering vector so alpha directly controls magnitude
     steering_vector_normed = steering_vector / steering_vector.norm()
 
     mo.md(
         f"""
-    **Steering vector built** from "{_pos}" (norm {act_pos.norm().item():.0f}) vs "{_neg}" (norm {act_neg.norm().item():.0f}) at layer {_layer}.
+    **Steering vector built** from "{_pos}" vs "{_neg}" at layer {_layer}.
 
-    We normalize each activation to unit length before taking the difference. This ensures both prompts contribute equally to the steering direction regardless of their raw magnitudes. The final steering vector is also unit-length, so $\\alpha$ directly controls the nudge strength.
+    The raw steering vector has norm **{steering_vector.norm().item():.2f}**. We normalize it to unit length so the coefficient $\\alpha$ directly controls the magnitude of the nudge.
     """
     )
     return (steering_vector_normed,)
@@ -414,7 +415,10 @@ def _(
     for layer_i in range(n_layers):
         _act_p = get_activation(_pos, layer_i)
         _act_n = get_activation(_neg, layer_i)
-        _sv = _act_p / _act_p.norm() - _act_n / _act_n.norm()
+        # Per-activation normalization before differencing
+        _act_p_normed = _act_p / _act_p.norm()
+        _act_n_normed = _act_n / _act_n.norm()
+        _sv = _act_p_normed - _act_n_normed
         _sv_normed = _sv / _sv.norm()
         norms_by_layer.append(_sv.norm().item())
 
