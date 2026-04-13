@@ -251,6 +251,7 @@ def _(
     generation_prompt,
     layer_slider,
     max_tokens_slider,
+    mo,
     model,
     steering_vector,
     tokenizer,
@@ -290,8 +291,24 @@ def _(
     baseline_ids = model.generate(**inputs, max_new_tokens=_max_tokens, temperature=0.5, do_sample=True)
     baseline_text = tokenizer.decode(baseline_ids[0], skip_special_tokens=True)
 
-    print(f"=== Baseline ===\n{baseline_text}\n")
-    print(f"=== Steered (a = {_coeff}) ===\n{steered_text}")
+    mo.hstack(
+        [
+            mo.vstack(
+                [
+                    mo.md("**Baseline** ($\\alpha = 0$)"),
+                    mo.md(f"> {baseline_text}"),
+                ]
+            ),
+            mo.vstack(
+                [
+                    mo.md(f"**Steered** ($\\alpha = {_coeff}$)"),
+                    mo.md(f"> {steered_text}"),
+                ]
+            ),
+        ],
+        widths="equal",
+        gap=1,
+    )
     return
 
 
