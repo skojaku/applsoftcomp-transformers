@@ -32,7 +32,7 @@ Implement both sampling methods and use them to answer the following. For each m
 
 ## Exercise 3: Beam Search (Second-Order Markov)
 
-Vocab $\{a, b, c, d, e\}$, three steps. Transition probabilities follow $p(1-p)^d$ normalized per row, where $d = |i-j|$ is the distance between token positions and $p = 0.5$. Step 3 conditions only on the second previous token $t_1$, not $t_2$.
+Vocab $\{a, b, c, d, e\}$, three steps. Transition probabilities follow $p(1-p)^d$ normalized per row, where $d = |i-j|$ is the distance between token positions and $p = 0.5$. For simplicity, $P(v_3 \mid v_2, v_1) = P(v_3 \mid v_1)$ — step 3 depends only on the first token $v_1$.
 
 Step 1 (log-probs from start):
 
@@ -44,7 +44,7 @@ Step 1 (log-probs from start):
 | d | $-1.61$ |
 | e | $-2.30$ |
 
-Step 2 (first-order). Step 3 uses the same table, indexed by $t_1$:
+Step 2 (first-order). Step 3 uses the same table, indexed by $v_1$:
 
 | From | $\ln P(a)$ | $\ln P(b)$ | $\ln P(c)$ | $\ln P(d)$ | $\ln P(e)$ |
 |------|----------|----------|----------|----------|----------|
@@ -54,19 +54,12 @@ Step 2 (first-order). Step 3 uses the same table, indexed by $t_1$:
 | d    | $-2.94$ | $-2.25$ | $-1.56$ | $-0.86$ | $-1.56$ |
 | e    | $-3.43$ | $-2.74$ | $-2.05$ | $-1.35$ | $-0.66$ |
 
-1. Trace greedy decoding ($B=1$). Report the sequence and its cumulative log-probability (round to two decimals).
-2. Trace beam search ($B=3$) for all three steps. At each step, list the candidates considered and which three are kept. Report the top sequence and its log-probability.
+Run beam search with $B=3$ for all three steps. At each step write down the top 3 sequences and their cumulative log-probabilities.
 
-**Q1 answer** (sequence and log-probability):
-
-&nbsp;
-
-**Q2 answer** (beams kept at each step, final top sequence):
+**Answer:**
 
 &nbsp;
 
 &nbsp;
 
 &nbsp;
-
-**Hint:** The table is symmetric — tokens closer to the source are always more likely. For step 3, look up the row for $t_1$ (the first token generated), not $t_2$.
