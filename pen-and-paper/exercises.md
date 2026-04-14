@@ -32,7 +32,7 @@ Implement both sampling methods and use them to answer the following. For each m
 
 ## Exercise 3: Beam Search (Second-Order Markov)
 
-Vocab $\{a, b, c, d, e\}$, three steps. Transition probabilities follow $p(1-p)^d$ normalized per row, where $d = |i-j|$ is the distance between token positions and $p = 0.5$. For simplicity, $P(v_3 \mid v_2, v_1) = P(v_3 \mid v_1)$ — step 3 depends only on the first token $v_1$.
+Vocab $\{a, b, c, d, e\}$, three steps. For simplicity, $P(v_3 \mid v_2, v_1) = P(v_3 \mid v_1)$ — step 3 depends only on the first token $v_1$.
 
 Step 1 (log-probs from start):
 
