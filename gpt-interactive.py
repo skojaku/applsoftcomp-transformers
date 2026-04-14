@@ -631,16 +631,180 @@ def _(beam_k_slider, beam_steps_slider, device, model, np, tokenizer, torch):
 
 
 # ──────────────────────────────────────────────
-# Section 7: Putting It All Together
+# Section 7: Exercise — Step-by-step generation
+# ──────────────────────────────────────────────
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Exercise: Generate a 5-token Sequence
+
+    Now it's your turn. You'll build a sequence **one token at a time**, for exactly 5 steps. To keep things simple, we use a **first-order Markov** assumption: each next token depends only on the **previous token**, not the full history.
+
+    Pick a sampling method, choose your starting token, then step through one token at a time. At each step you'll see the probability distribution over the next token given only the current one.
+
+    /// note | Why first-order Markov?
+    Real GPT conditions on the *entire* sequence so far. Here we deliberately limit to just the previous token so you can reason about each step by hand. The sampling mechanics (greedy, top-k, top-p, temperature) work exactly the same way.
+    ///
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    ex_method = mo.ui.dropdown(
+        options=["Greedy", "Top-k", "Top-p", "Top-k + Top-p"],
+        value="Top-k",
+        label="Sampling method",
+    )
+    ex_temp = mo.ui.slider(start=0.1, stop=3.0, step=0.1, value=1.0, label="Temperature (τ)", show_value=True)
+    ex_topk = mo.ui.slider(start=1, stop=20, step=1, value=5, label="Top-k", show_value=True)
+    ex_topp = mo.ui.slider(start=0.1, stop=1.0, step=0.05, value=0.9, label="Top-p", show_value=True)
+    ex_start = mo.ui.text(value="I", label="Starting token", full_width=True)
+    ex_go = mo.ui.run_button(label="Generate step by step")
+    return ex_go, ex_method, ex_start, ex_temp, ex_topk, ex_topp
+
+
+@app.cell(hide_code=True)
+def _(ex_go, ex_method, ex_start, ex_temp, ex_topk, ex_topp, mo):
+    _method = ex_method.value
+    _controls = [ex_start, ex_method, ex_temp]
+    if _method in ("Top-k", "Top-k + Top-p"):
+        _controls.append(ex_topk)
+    if _method in ("Top-p", "Top-k + Top-p"):
+        _controls.append(ex_topp)
+    _controls.append(ex_go)
+    mo.vstack(_controls)
+    return
+
+
+@app.cell(hide_code=True)
+def _(device, ex_go, ex_method, ex_start, ex_temp, ex_topk, ex_topp, mo, model, np, tokenizer, torch):
+    mo.stop(not ex_go.value, mo.md("*Click **Generate step by step** to begin.*"))
+
+    _n_steps = 5
+    _tau = ex_temp.value
+    _method = ex_method.value
+    _k = ex_topk.value
+    _p = ex_topp.value
+
+    # Tokenize the starting text
+    _start_ids = tokenizer.encode(ex_start.value)
+    if len(_start_ids) == 0:
+        mo.callout(mo.md("Please enter a starting token."), kind="warn")
+        mo.stop(True)
+
+    # Use only the last token as our "current token" (first-order Markov)
+    _current_id = _start_ids[-1]
+    _sequence_ids = list(_start_ids)
+    _step_details = []
+
+    for _step in range(_n_steps):
+        # Feed ONLY the current token to the model
+        _input = torch.tensor([[_current_id]], device=device)
+        with torch.no_grad():
+            _out = model(_input)
+        _logits = _out.logits[0, -1, :].cpu().numpy()
+
+        # Apply temperature
+        _scaled = _logits / _tau
+        _exp = np.exp(_scaled - np.max(_scaled))
+        _probs = _exp / _exp.sum()
+
+        # Sort by probability
+        _sorted_idx = np.argsort(_probs)[::-1]
+
+        # Apply top-k / top-p filtering
+        if _method == "Greedy":
+            _candidates = _sorted_idx[:1]
+        elif _method == "Top-k":
+            _candidates = _sorted_idx[:_k]
+        elif _method == "Top-p":
+            _cumsum = np.cumsum(_probs[_sorted_idx])
+            _nucleus_size = int(np.searchsorted(_cumsum, _p) + 1)
+            _candidates = _sorted_idx[:_nucleus_size]
+        else:  # Top-k + Top-p
+            _topk_set = set(_sorted_idx[:_k].tolist())
+            _cumsum = np.cumsum(_probs[_sorted_idx])
+            _nucleus_size = int(np.searchsorted(_cumsum, _p) + 1)
+            _topp_set = set(_sorted_idx[:_nucleus_size].tolist())
+            _candidates = np.array([i for i in _sorted_idx if i in _topk_set and i in _topp_set])
+            if len(_candidates) == 0:
+                _candidates = _sorted_idx[:1]
+
+        # Renormalize and sample
+        _cand_probs = _probs[_candidates]
+        _cand_probs = _cand_probs / _cand_probs.sum()
+
+        if _method == "Greedy":
+            _chosen_local = 0
+        else:
+            _chosen_local = np.random.choice(len(_candidates), p=_cand_probs)
+
+        _chosen_id = int(_candidates[_chosen_local])
+        _chosen_token = tokenizer.decode([_chosen_id])
+        _chosen_prob = _cand_probs[_chosen_local]
+
+        # Record this step
+        _top_display = min(len(_candidates), 10)
+        _step_info = {
+            "step": _step + 1,
+            "given": tokenizer.decode([_current_id]),
+            "candidates": [
+                (tokenizer.decode([int(_candidates[i])]), float(_cand_probs[i]))
+                for i in range(_top_display)
+            ],
+            "n_candidates": len(_candidates),
+            "chosen": _chosen_token,
+            "chosen_prob": float(_chosen_prob),
+        }
+        _step_details.append(_step_info)
+
+        _sequence_ids.append(_chosen_id)
+        _current_id = _chosen_id  # first-order: only this token feeds into next step
+
+    # Build output
+    _parts = []
+    for _s in _step_details:
+        _bars = []
+        for _tok, _prob in _s["candidates"]:
+            _pct = _prob / _s["candidates"][0][1] * 100 if _s["candidates"][0][1] > 0 else 0
+            _is_chosen = (_tok == _s["chosen"])
+            _color = "#ff6b35" if _is_chosen else "#4a90d9"
+            _marker = " **← sampled**" if _is_chosen else ""
+            _bars.append(
+                f'<div style="display:flex;align-items:center;margin:2px 0;">'
+                f'<code style="width:80px;text-align:right;margin-right:8px;white-space:pre">{_tok}</code>'
+                f'<div style="background:{_color};height:18px;width:{_pct:.1f}%;border-radius:3px;"></div>'
+                f'<span style="margin-left:6px;font-size:0.85em">{_prob:.4f}{_marker}</span>'
+                f'</div>'
+            )
+        _parts.append(
+            f"### Step {_s['step']}: given `{_s['given']}` → ({_s['n_candidates']} candidates)\n\n"
+            + "".join(_bars)
+        )
+
+    _final_text = tokenizer.decode(_sequence_ids)
+    _parts.append(
+        f'\n### Result\n\n**"{_final_text}"**'
+    )
+
+    mo.md("\n\n".join(_parts))
+    return
+
+
+# ──────────────────────────────────────────────
+# Section 8: Putting It All Together
 # ──────────────────────────────────────────────
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## Putting It All Together
+    ## Putting It All Together (Full Model)
 
-    Now let's generate actual text. Pick a sampling strategy and tweak the parameters.
+    The exercise above used first-order Markov. The real model conditions on the **entire sequence**. Try the same prompt here and compare.
     """)
     return
 
