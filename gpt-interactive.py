@@ -72,7 +72,7 @@ def _(device, model, mo, np, tokenizer, torch):
     with torch.no_grad():
         _out = model(**_inputs)
     # Logits for the last token position = prediction for the next token
-    raw_logits = _out.logits[0, -1, :].cpu().numpy()
+    raw_logits = _out.logits[0, -1, :].float().cpu().numpy()
 
     # Show top 15 tokens by logit value
     _top_idx = np.argsort(raw_logits)[::-1][:15]
