@@ -4,22 +4,15 @@ title: "GPT Sampling Exercises"
 
 # GPT Sampling Exercises
 
-## Exercise 1: Softmax and Temperature
-
 Softmax converts logits $z = [z_1, \dots, z_V]$ into probabilities:
-
-$$P(i) = \frac{e^{z_i}}{\sum_j e^{z_j}}$$
-
-Temperature $T > 0$ scales the logits before softmax:
 
 $$P(i) = \frac{e^{z_i / T}}{\sum_j e^{z_j / T}}$$
 
-Large $T$ flattens the distribution; small $T$ sharpens it.
+where temperature $T > 0$ scales the logits before softmax.
 
 A model outputs logits $z = [1, 0, -1]$ for tokens $\{a, b, c\}$.
 
-1. Compute $P(a)$ at $T = 1$.
-2. Compute $P(a)$ at $T = 2$.
+In a Colab notebook, implement softmax with temperature and compute the full probability distribution for $T \in \{0.5, 1, 2, 5\}$. Plot $P(\text{token})$ vs. $T$ for each token and describe what happens to the distribution as $T$ increases. Submit your notebook link.
 
 ## Exercise 3: Nucleus Sampling
 
