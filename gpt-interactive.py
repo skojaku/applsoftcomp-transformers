@@ -400,7 +400,134 @@ def _(mo, np, raw_logits, tokenizer, topp_p_slider, topp_temp_slider):
 
 
 # ──────────────────────────────────────────────
-# Section 6: Putting It All Together
+# Section 6: Beam Search
+# ──────────────────────────────────────────────
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Step 5: Beam Search — Exploring Multiple Paths
+
+    All the methods above make decisions one token at a time. Greedy picks the single best token, and top-k/top-p sample from a filtered set. But what if the best *sequence* doesn't start with the best *first token*?
+
+    Consider a toy example. Token A has 60% probability at step 1, and token B has 40%. Greedy always picks A. But what if every continuation of A is mediocre, while B leads to a highly probable sequence? Greedy would never discover that.
+
+    **Beam search** addresses this by keeping track of $k$ candidate sequences (called *beams*) in parallel. At each step, it expands every beam by considering the top-$B$ next tokens, then keeps only the $k$ highest-scoring full sequences. This lets it explore multiple paths without the exponential cost of checking every possibility.
+
+    The algorithm works as follows. Start with $k$ copies of the prompt. For each beam, compute the next-token probabilities and expand to the top-$B$ candidates. Now there are $k \times B$ candidate sequences. Score each by its total log-probability (product of all token probabilities). Keep the top-$k$ and discard the rest. Repeat until done.
+
+    Beam search is **deterministic** (no randomness) but can find higher-probability sequences than greedy. The tradeoff is computational cost: more beams means better exploration but slower generation.
+
+    Let's visualize how beams branch and get pruned at each step.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    beam_k_slider = mo.ui.slider(
+        start=2, stop=6, step=1, value=3,
+        label="Number of beams (k)",
+        show_value=True,
+    )
+    beam_steps_slider = mo.ui.slider(
+        start=1, stop=6, step=1, value=3,
+        label="Steps to visualize",
+        show_value=True,
+    )
+    mo.vstack([beam_k_slider, beam_steps_slider])
+    return beam_k_slider, beam_steps_slider
+
+
+@app.cell(hide_code=True)
+def _(beam_k_slider, beam_steps_slider, device, mo, model, np, tokenizer, torch):
+    _k = beam_k_slider.value
+    _n_steps = beam_steps_slider.value
+    _prompt = "I wish I could be"
+
+    # Run beam search step by step
+    _input_ids = tokenizer(_prompt, return_tensors="pt").input_ids.to(device)
+
+    # Each beam: (token_ids, cumulative_log_prob)
+    _beams = [(_input_ids[0].tolist(), 0.0)]
+
+    _step_records = []
+
+    for _step in range(_n_steps):
+        _candidates = []
+        _expansions = {}  # for visualization: beam_idx -> [(token, log_prob)]
+
+        for _b_idx, (_seq, _score) in enumerate(_beams):
+            _ids = torch.tensor([_seq], device=device)
+            with torch.no_grad():
+                _out = model(_ids)
+            _logits = _out.logits[0, -1, :]
+            _log_probs = torch.nn.functional.log_softmax(_logits, dim=-1)
+            _top_vals, _top_ids = torch.topk(_log_probs, _k)
+
+            _exps = []
+            for _v, _tid in zip(_top_vals.cpu().numpy(), _top_ids.cpu().numpy()):
+                _new_seq = _seq + [int(_tid)]
+                _new_score = _score + float(_v)
+                _candidates.append((_new_seq, _new_score))
+                _exps.append((tokenizer.decode([int(_tid)]), float(_v)))
+            _expansions[_b_idx] = _exps
+
+        # Keep top-k candidates
+        _candidates.sort(key=lambda x: x[1], reverse=True)
+        _beams = _candidates[:_k]
+
+        _step_records.append({
+            "expansions": _expansions,
+            "surviving_beams": [
+                (tokenizer.decode(seq[len(_input_ids[0]):]), score)
+                for seq, score in _beams
+            ],
+        })
+
+    # Build visualization
+    _prompt_len = len(_input_ids[0])
+    _html_parts = [f'**Prompt:** "{_prompt}"\n\n']
+
+    for _s, _rec in enumerate(_step_records):
+        _html_parts.append(f"### Step {_s + 1}\n\n")
+
+        # Show expansions
+        _html_parts.append("**Expanding beams** (each beam tries top-{} tokens):\n\n".format(_k))
+        for _b_idx, _exps in _rec["expansions"].items():
+            _beam_label = f"Beam {_b_idx + 1}"
+            _exp_strs = [f"`{tok}` ({lp:.2f})" for tok, lp in _exps]
+            _html_parts.append(f"- {_beam_label} → {', '.join(_exp_strs)}\n")
+
+        _html_parts.append("\n**Surviving beams** (top-{} by total score):\n\n".format(_k))
+        for _i, (_decoded, _score) in enumerate(_rec["surviving_beams"]):
+            _bar_width = max(5, int(np.exp(_score) * 300))
+            _html_parts.append(
+                f'<div style="display:flex;align-items:center;margin:3px 0;">'
+                f'<span style="width:24px;font-weight:bold;color:#4a90d9">{_i+1}.</span>'
+                f'<div style="background:#4a90d9;height:20px;width:{_bar_width}px;border-radius:3px;margin-right:8px"></div>'
+                f'<code>{_decoded}</code>'
+                f'<span style="margin-left:8px;color:#666;font-size:0.85em">(score: {_score:.2f})</span>'
+                f'</div>\n'
+            )
+        _html_parts.append("\n")
+
+    # Final result
+    _html_parts.append("### Final output\n\n")
+    _best_text = _step_records[-1]["surviving_beams"][0][0]
+    _html_parts.append(
+        f'The best beam after {_n_steps} steps: **"{_prompt}{_best_text}"**\n\n'
+        f"Greedy would have only followed the single top path. "
+        f"With {_k} beams, we explored {_k} alternatives at every step."
+    )
+
+    mo.md("".join(_html_parts))
+    return
+
+
+# ──────────────────────────────────────────────
+# Section 7: Putting It All Together
 # ──────────────────────────────────────────────
 
 
