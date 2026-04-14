@@ -17,15 +17,13 @@ app = marimo.App(width="medium")
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        """
-        # GPT Sampling Exercises
+    mo.md("""
+    # GPT Sampling Exercises
 
-        Use this notebook to implement and test your solutions for the pen-and-paper exercises.
-        Each exercise has a starter cell with `TODO` comments where you write your code,
-        followed by test cells that compute the answers you need to fill in on the paper.
-        """
-    )
+    Use this notebook to implement and test your solutions for the pen-and-paper exercises.
+    Each exercise has a starter cell with `TODO` comments where you write your code,
+    followed by test cells that compute the answers you need to fill in on the paper.
+    """)
     return
 
 
@@ -35,25 +33,24 @@ def _():
     import pandas as pd
     import altair as alt
     import marimo as mo
+
     return alt, mo, np, pd
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        """
-        ---
+    mo.md("""
+    ---
 
-        ## Exercise 1: Softmax with Temperature
+    ## Exercise 1: Softmax with Temperature
 
-        Softmax converts logits $z = [z_1, \\dots, z_V]$ into probabilities:
+    Softmax converts logits $z = [z_1, \dots, z_V]$ into probabilities:
 
-        $$P(i) = \\frac{e^{z_i / T}}{\\sum_j e^{z_j / T}}$$
+    $$P(i) = \frac{e^{z_i / T}}{\sum_j e^{z_j / T}}$$
 
-        **Your task:** implement `softmax_with_temperature(z, T)` below, then run the
-        test cell to compute and plot the distributions for $T \\in \\{0.5, 1, 2, 5\\}$.
-        """
-    )
+    **Your task:** implement `softmax_with_temperature(z, T)` below, then run the
+    test cell to compute and plot the distributions for $T \in \{0.5, 1, 2, 5\}$.
+    """)
     return
 
 
@@ -213,21 +210,19 @@ def _(alt, ex1_T_slider, mo, np, pd, softmax_with_temperature):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        """
-        ---
+    mo.md("""
+    ---
 
-        ## Exercise 2: Top-$k$ and Top-$p$ Sampling
+    ## Exercise 2: Top-$k$ and Top-$p$ Sampling
 
-        **Top-$k$** keeps the $k$ highest-probability tokens and zeroes out the rest, then renormalizes.
+    **Top-$k$** keeps the $k$ highest-probability tokens and zeroes out the rest, then renormalizes.
 
-        **Top-$p$** (nucleus) keeps the fewest tokens whose cumulative probability reaches $p$, then renormalizes.
+    **Top-$p$** (nucleus) keeps the fewest tokens whose cumulative probability reaches $p$, then renormalizes.
 
-        Logits: $z = [3.0, 2.0, 1.5, 1.0, 0.5, 0.0, -0.5, -1.0, -1.5, -2.0]$
+    Logits: $z = [3.0, 2.0, 1.5, 1.0, 0.5, 0.0, -0.5, -1.0, -1.5, -2.0]$
 
-        **Your task:** implement `top_k_sampling` and `top_p_sampling` below.
-        """
-    )
+    **Your task:** implement `top_k_sampling` and `top_p_sampling` below.
+    """)
     return
 
 
@@ -478,20 +473,18 @@ def _(mo, np, pd, softmax_with_temperature, top_k_sampling, top_p_sampling):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        """
-        ---
+    mo.md("""
+    ---
 
-        ## Exercise 3: Beam Search
+    ## Exercise 3: Beam Search
 
-        This exercise is best done by hand, but you can use the code below to verify your answers.
+    This exercise is best done by hand, but you can use the code below to verify your answers.
 
-        Vocab: $\\{a, b\\}$, three steps. Step 3 depends on both previous tokens.
+    Vocab: $\{a, b\}$, three steps. Step 3 depends on both previous tokens.
 
-        The log-probability tables are pre-loaded below. Run the greedy and beam search
-        cells to check your pen-and-paper work.
-        """
-    )
+    The log-probability tables are pre-loaded below. Run the greedy and beam search
+    cells to check your pen-and-paper work.
+    """)
     return
 
 
@@ -535,65 +528,59 @@ def _(mo):
     return step1_logprobs, step2_logprobs, step3_logprobs
 
 
-@app.cell
-def _():
-    def greedy_search(step1_lp, step2_lp, step3_lp):
-        """Perform greedy decoding (B=1).
+@app.function
+def greedy_search(step1_lp, step2_lp, step3_lp):
+    """Perform greedy decoding (B=1).
 
-        At each step, pick the single token with the highest log-probability.
+    At each step, pick the single token with the highest log-probability.
 
-        Args:
-            step1_lp: dict mapping token -> log-prob for step 1
-            step2_lp: dict mapping prev_token -> {token: log-prob} for step 2
-            step3_lp: dict mapping (prev2, prev1) -> {token: log-prob} for step 3
+    Args:
+        step1_lp: dict mapping token -> log-prob for step 1
+        step2_lp: dict mapping prev_token -> {token: log-prob} for step 2
+        step3_lp: dict mapping (prev2, prev1) -> {token: log-prob} for step 3
 
-        Returns:
-            (sequence_list, cumulative_log_prob)
-            e.g. (["a", "b", "b"], -1.38)
-        """
-        # TODO: implement greedy decoding
-        # Step 1: pick the token with the highest log-prob from step1_lp
-        # Step 2: given step 1's choice, pick the best token from step2_lp
-        # Step 3: given steps 1 & 2, pick the best token from step3_lp
-        # Track cumulative log-probability throughout.
-        raise NotImplementedError("Implement greedy_search")
-
-    return (greedy_search,)
+    Returns:
+        (sequence_list, cumulative_log_prob)
+        e.g. (["a", "b", "b"], -1.38)
+    """
+    # TODO: implement greedy decoding
+    # Step 1: pick the token with the highest log-prob from step1_lp
+    # Step 2: given step 1's choice, pick the best token from step2_lp
+    # Step 3: given steps 1 & 2, pick the best token from step3_lp
+    # Track cumulative log-probability throughout.
+    raise NotImplementedError("Implement greedy_search")
 
 
-@app.cell
-def _():
-    def beam_search(step1_lp, step2_lp, step3_lp, B):
-        """Perform beam search with beam width B.
+@app.function
+def beam_search(step1_lp, step2_lp, step3_lp, B):
+    """Perform beam search with beam width B.
 
-        At each step, expand all beams, score candidates, and keep the top B.
+    At each step, expand all beams, score candidates, and keep the top B.
 
-        Args:
-            step1_lp: dict mapping token -> log-prob for step 1
-            step2_lp: dict mapping prev_token -> {token: log-prob} for step 2
-            step3_lp: dict mapping (prev2, prev1) -> {token: log-prob} for step 3
-            B: beam width
+    Args:
+        step1_lp: dict mapping token -> log-prob for step 1
+        step2_lp: dict mapping prev_token -> {token: log-prob} for step 2
+        step3_lp: dict mapping (prev2, prev1) -> {token: log-prob} for step 3
+        B: beam width
 
-        Returns:
-            list of (cumulative_log_prob, sequence_list) for the top B beams,
-            sorted best-first.
-        """
-        vocab = ["a", "b"]
-        # TODO: implement beam search
-        # Start with a single beam: (0.0, [])
-        # At each step:
-        #   1. Expand each beam by appending every vocab token.
-        #   2. Score each candidate (add the new token's log-prob).
-        #   3. Sort candidates by cumulative log-prob (descending).
-        #   4. Keep only the top B candidates.
-        # After 3 steps, return the final beams.
-        raise NotImplementedError("Implement beam_search")
-
-    return (beam_search,)
+    Returns:
+        list of (cumulative_log_prob, sequence_list) for the top B beams,
+        sorted best-first.
+    """
+    vocab = ["a", "b"]
+    # TODO: implement beam search
+    # Start with a single beam: (0.0, [])
+    # At each step:
+    #   1. Expand each beam by appending every vocab token.
+    #   2. Score each candidate (add the new token's log-prob).
+    #   3. Sort candidates by cumulative log-prob (descending).
+    #   4. Keep only the top B candidates.
+    # After 3 steps, return the final beams.
+    raise NotImplementedError("Implement beam_search")
 
 
 @app.cell(hide_code=True)
-def _(mo, beam_search, greedy_search, step1_logprobs, step2_logprobs, step3_logprobs):
+def _(mo, step1_logprobs, step2_logprobs, step3_logprobs):
     # Check readiness
     try:
         greedy_search(step1_logprobs, step2_logprobs, step3_logprobs)
@@ -634,11 +621,8 @@ def _(mo, beam_search, greedy_search, step1_logprobs, step2_logprobs, step3_logp
 @app.cell(hide_code=True)
 def _(
     alt,
-    beam_search,
     ex3_B_slider,
-    greedy_search,
     mo,
-    np,
     pd,
     step1_logprobs,
     step2_logprobs,
@@ -807,13 +791,11 @@ def _(
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        """
-        ---
+    mo.md("""
+    ---
 
-        Once you have all answers, fill in the paper exercise sheet and submit it as your exit ticket.
-        """
-    )
+    Once you have all answers, fill in the paper exercise sheet and submit it as your exit ticket.
+    """)
     return
 
 
