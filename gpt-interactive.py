@@ -5,28 +5,24 @@
 #     "torch==2.6.0",
 #     "transformers==4.49.0",
 #     "numpy",
-#     "plotly",
+#     "plotly==6.7.0",
 # ]
 # ///
 
 import marimo
 
 __generated_with = "0.23.1"
-app = marimo.App()
+app = marimo.App(css_file="marimo_lecture_note_theme.css")
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("""
+    mo.md(r"""
     # Generative Pre-trained Transformer (GPT)
 
-    GPT is an **autoregressive language model** that generates text one token at a time. Given tokens $(x_1, \ldots, x_n)$, the model maximizes:
+    GPT generates text **one token at a time**, maximizing $P(x_1, \ldots, x_n) = \prod_i P(x_i \mid x_1, \ldots, x_{i-1})$.
 
-    $$P(x_1, \ldots, x_n) = \prod_{i=1}^n P(x_i \mid x_1, \ldots, x_{i-1})$$
-
-    The model gives us a conditional probability distribution over the next token, but finding the *best* full sequence is intractable. Instead, we use **sampling strategies** to generate text.
-
-    How do we go from raw model outputs to a chosen token? Let's build the intuition step by step.
+    Finding the best full sequence is intractable. So we need **sampling strategies**. Let's build up the intuition, step by step.
     """)
     return
 
@@ -41,7 +37,7 @@ def _(mo):
     mo.md("""
     ## Step 0: Load a Language Model
 
-    We use **SmolLM2-135M**, a compact language model that runs comfortably on CPU. Let's load it and peek at its raw output.
+    We use **SmolLM2-135M**, a compact model that runs on CPU. Let's peek at its raw output.
     """)
     return
 
@@ -64,9 +60,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    When we feed a prompt into the model, it doesn't directly output words. It outputs a vector of **logits**, one number per token in the vocabulary. These are raw, unnormalized scores. Positive logits mean the model thinks that token is a plausible continuation. Negative logits mean it's unlikely.
-
-    Let's see what the model produces for a simple prompt.
+    The model doesn't output words directly. It outputs **logits**: one raw score per vocabulary token. Positive = plausible, negative = unlikely.
     """)
     return
 
@@ -104,15 +98,13 @@ def _(device, model, mo, np, tokenizer, torch):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Step 1: Softmax — From Logits to Probabilities
+    ## Step 1: Softmax — Logits to Probabilities
 
-    Raw logits are hard to interpret. We need to convert them into a proper probability distribution that sums to 1. That's what the **softmax** function does:
+    We need a proper probability distribution (sums to 1). **Softmax** does this:
 
     $$p_i = \frac{\exp(z_i)}{\sum_j \exp(z_j)}$$
 
-    Softmax does two things. First, it exponentiates, which makes all values positive and amplifies differences. Second, it normalizes, so the values sum to 1.
-
-    Let's see it in action on our model's logits.
+    Exponentiate (all positive, amplifies differences), then normalize.
     """)
     return
 
@@ -149,13 +141,11 @@ def _(mo):
     mo.md(r"""
     ## Step 2: Temperature — Controlling Randomness
 
-    What if the distribution is too peaked (always picking the same token) or too flat (picking nonsense)? We can tune the **sharpness** of the distribution by dividing the logits by a temperature parameter $\tau$ before applying softmax:
+    Divide logits by temperature $\tau$ before softmax to control sharpness:
 
     $$p_i = \frac{\exp(z_i / \tau)}{\sum_j \exp(z_j / \tau)}$$
 
-    When $\tau < 1$, the distribution becomes *sharper* (more confident). When $\tau > 1$, it becomes *flatter* (more random). At $\tau = 1$, it's the standard softmax.
-
-    Use the slider below to see how temperature reshapes the probability distribution.
+    $\tau < 1$: sharper (more confident). $\tau > 1$: flatter (more random). $\tau = 1$: standard softmax.
     """)
     return
 
@@ -225,11 +215,7 @@ def _(mo):
     mo.md(r"""
     ## Step 3: Top-k Sampling — Limiting Candidates
 
-    Even after softmax, the model assigns *some* probability to every token in the vocabulary. Most of these are near zero, but sampling from all of them can occasionally produce garbage tokens.
-
-    **Top-k sampling** solves this by keeping only the $k$ most likely tokens and zeroing out everything else. We then renormalize the remaining probabilities and sample from that smaller set.
-
-    Use the slider to see how $k$ affects which tokens remain in the candidate pool.
+    The model assigns *some* probability to every token. Most near zero, but sampling from all of them can produce garbage. **Top-k** keeps only the $k$ most likely tokens, zeros out the rest, and renormalizes.
     """)
     return
 
@@ -310,13 +296,9 @@ def _(mo, np, raw_logits, tokenizer, topk_k_slider, topk_temp_slider):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Step 4: Nucleus (Top-p) Sampling — Adaptive Candidate Pool
+    ## Step 4: Nucleus (Top-p) Sampling — Adaptive Candidates
 
-    Top-k uses a fixed number of candidates regardless of how the probability is distributed. But sometimes the model is very confident (one token has 90% probability) and sometimes it's uncertain (probability spread across many tokens).
-
-    **Nucleus sampling** adapts to this. Instead of a fixed $k$, we select the smallest set of tokens whose cumulative probability exceeds a threshold $p$. When the model is confident, only a few tokens make the cut. When uncertain, more do.
-
-    Watch how the number of selected tokens changes as you adjust $p$.
+    Top-k uses a fixed candidate count. But model confidence varies. **Nucleus sampling** adapts: select the smallest set of tokens whose cumulative probability exceeds threshold $p$. Confident model = few tokens. Uncertain = many.
     """)
     return
 
@@ -410,17 +392,9 @@ def _(mo):
     mo.md(r"""
     ## Step 5: Beam Search — Exploring Multiple Paths
 
-    All the methods above make decisions one token at a time. Greedy picks the single best token, and top-k/top-p sample from a filtered set. But what if the best *sequence* doesn't start with the best *first token*?
+    What if the best *sequence* doesn't start with the best *first token*? Greedy would never find it.
 
-    Consider a toy example. Token A has 60% probability at step 1, and token B has 40%. Greedy always picks A. But what if every continuation of A is mediocre, while B leads to a highly probable sequence? Greedy would never discover that.
-
-    **Beam search** addresses this by keeping track of $k$ candidate sequences (called *beams*) in parallel. At each step, it expands every beam by considering the top-$B$ next tokens, then keeps only the $k$ highest-scoring full sequences. This lets it explore multiple paths without the exponential cost of checking every possibility.
-
-    The algorithm works as follows. Start with $k$ copies of the prompt. For each beam, compute the next-token probabilities and expand to the top-$B$ candidates. Now there are $k \times B$ candidate sequences. Score each by its total log-probability (product of all token probabilities). Keep the top-$k$ and discard the rest. Repeat until done.
-
-    Beam search is **deterministic** (no randomness) but can find higher-probability sequences than greedy. The tradeoff is computational cost: more beams means better exploration but slower generation.
-
-    Let's visualize how beams branch and get pruned at each step.
+    **Beam search** keeps $k$ candidate sequences (*beams*) in parallel. Each step: expand every beam with its top-$B$ next tokens ($k \times B$ candidates total), score by cumulative log-probability, keep top-$k$, discard the rest. Deterministic, no randomness, but more expensive than greedy.
     """)
     return
 
@@ -666,7 +640,7 @@ def _(mo):
     mo.md("""
     ## Putting It All Together
 
-    Now that we understand each piece, let's use them for actual text generation. The controls below let you pick any combination of sampling strategies and see how they affect the generated text.
+    Now let's generate actual text. Pick a sampling strategy and tweak the parameters.
     """)
     return
 
@@ -812,12 +786,10 @@ def _(mo):
     mo.md("""
     ## Summary
 
-    We built up the text generation pipeline piece by piece:
-
-    **Logits** are the raw model output, one score per vocabulary token. **Softmax** converts them into probabilities. **Temperature** controls how peaked or flat that distribution is. **Top-k** limits candidates to a fixed number of the most likely tokens. **Top-p (nucleus)** adapts the candidate pool size based on the model's confidence. In practice, these are combined (e.g., top-k=50, top-p=0.95, temperature=0.7) to balance coherence and diversity.
+    **Logits** (raw scores) → **softmax** (probabilities) → **temperature** (sharpen/flatten) → **top-k** (fixed candidate count) or **top-p** (adaptive candidates) → sample. **Beam search** explores multiple paths deterministically. In practice, combine them (e.g., top-k=50, top-p=0.95, temperature=0.7).
 
     /// tip | Try it yourself
-    Go back to the interactive generation section and experiment. Try greedy first to see the repetition problem, then switch to top-k or nucleus sampling. What happens as you crank up the temperature?
+    Try greedy first (see the repetition). Then top-k or nucleus. Crank up temperature. What happens?
     ///
     """)
     return
