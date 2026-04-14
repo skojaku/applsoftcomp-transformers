@@ -79,38 +79,111 @@ def _(np):
 
 
 @app.cell(hide_code=True)
-def _(alt, mo, np, pd, softmax_with_temperature):
-    # --- Test cell for Exercise 1 ---
-    _z = np.array([1.0, 0.0, -1.0])
-    _tokens = ["a", "b", "c"]
-    _temperatures = [0.5, 1.0, 2.0, 5.0]
-
+def _(mo, softmax_with_temperature):
+    # Interactive temperature slider for live exploration
     try:
+        softmax_with_temperature([0], 1.0)
+        _ex1_ready = True
+    except NotImplementedError:
+        _ex1_ready = False
+
+    if _ex1_ready:
+        ex1_T_slider = mo.ui.slider(
+            0.1, 5.0, value=1.0, step=0.1, label="Temperature T", show_value=True
+        )
+        mo.vstack([mo.md("### Interactive Explorer"), ex1_T_slider])
+    else:
+        ex1_T_slider = None
+        mo.callout(
+            mo.md("Implement `softmax_with_temperature` in the cell above, then re-run."),
+            kind="warn",
+        )
+    return (ex1_T_slider,)
+
+
+@app.cell(hide_code=True)
+def _(alt, ex1_T_slider, mo, np, pd, softmax_with_temperature):
+    if ex1_T_slider is None:
+        mo.output.replace(mo.md(""))
+    else:
+        _z = np.array([1.0, 0.0, -1.0])
+        _tokens = ["a", "b", "c"]
+        _colors = ["#4dabf7", "#51cf66", "#ff6b6b"]
+
+        # --- Live bar chart at current slider T ---
+        _T_cur = ex1_T_slider.value
+        _probs_cur = softmax_with_temperature(_z, _T_cur)
+        _df_bar = pd.DataFrame({"Token": _tokens, "Probability": _probs_cur})
+        _bar = (
+            alt.Chart(_df_bar)
+            .mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4, size=60)
+            .encode(
+                x=alt.X("Token:N", axis=alt.Axis(labelFontSize=14, titleFontSize=14)),
+                y=alt.Y(
+                    "Probability:Q",
+                    scale=alt.Scale(domain=[0, 1]),
+                    axis=alt.Axis(labelFontSize=12, titleFontSize=14),
+                ),
+                color=alt.Color(
+                    "Token:N",
+                    scale=alt.Scale(domain=_tokens, range=_colors),
+                    legend=None,
+                ),
+                tooltip=["Token", alt.Tooltip("Probability:Q", format=".4f")],
+            )
+            .properties(width=300, height=250, title=f"Distribution at T = {_T_cur:.1f}")
+        )
+        _bar_text = (
+            alt.Chart(_df_bar)
+            .mark_text(dy=-12, fontSize=13, fontWeight="bold")
+            .encode(
+                x="Token:N",
+                y="Probability:Q",
+                text=alt.Text("Probability:Q", format=".3f"),
+            )
+        )
+
+        # --- Line chart across all required temperatures ---
+        _temperatures = [0.5, 1.0, 2.0, 5.0]
         _rows = []
         for _T in _temperatures:
             _probs = softmax_with_temperature(_z, _T)
             for _tok, _p in zip(_tokens, _probs):
                 _rows.append({"Token": _tok, "T": _T, "P(token)": _p})
+        _df_line = pd.DataFrame(_rows)
 
-        _df = pd.DataFrame(_rows)
-
-        _chart = (
-            alt.Chart(_df)
-            .mark_line(point=True)
+        _line = (
+            alt.Chart(_df_line)
+            .mark_line(point=alt.OverlayMarkDef(size=80), strokeWidth=2.5)
             .encode(
-                x=alt.X("T:Q", title="Temperature T"),
-                y=alt.Y("P(token):Q", scale=alt.Scale(domain=[0, 1]), title="P(token)"),
-                color=alt.Color("Token:N"),
+                x=alt.X("T:Q", title="Temperature T", axis=alt.Axis(labelFontSize=12)),
+                y=alt.Y(
+                    "P(token):Q",
+                    scale=alt.Scale(domain=[0, 1]),
+                    title="P(token)",
+                    axis=alt.Axis(labelFontSize=12),
+                ),
+                color=alt.Color(
+                    "Token:N",
+                    scale=alt.Scale(domain=_tokens, range=_colors),
+                ),
                 tooltip=[
                     "Token",
                     alt.Tooltip("T:Q", format=".1f"),
                     alt.Tooltip("P(token):Q", format=".4f"),
                 ],
             )
-            .properties(width=500, height=300, title="P(token) vs Temperature")
+            .properties(width=350, height=250, title="P(token) vs Temperature")
         )
 
-        # Build answer table
+        # Vertical rule at current slider position
+        _rule = (
+            alt.Chart(pd.DataFrame({"T": [_T_cur]}))
+            .mark_rule(strokeDash=[4, 4], color="gray", strokeWidth=1.5)
+            .encode(x="T:Q")
+        )
+
+        # --- Answer table ---
         _ans_rows = []
         for _T in _temperatures:
             _probs = softmax_with_temperature(_z, _T)
@@ -126,16 +199,14 @@ def _(alt, mo, np, pd, softmax_with_temperature):
 
         mo.vstack(
             [
-                mo.md("### Results for Exercise 1"),
-                _chart,
+                mo.hstack(
+                    [_bar + _bar_text, _line + _rule],
+                    justify="center",
+                    gap=1.5,
+                ),
                 mo.md("**Probability table** (copy these to your paper):"),
                 mo.ui.table(_ans_df, selection=None),
             ]
-        )
-    except NotImplementedError:
-        mo.callout(
-            mo.md("Implement `softmax_with_temperature` in the cell above, then re-run."),
-            kind="warn",
         )
     return
 
@@ -212,65 +283,196 @@ def _(np):
 
 
 @app.cell(hide_code=True)
-def _(mo, np, pd, softmax_with_temperature, top_k_sampling, top_p_sampling):
-    _z = np.array([3.0, 2.0, 1.5, 1.0, 0.5, 0.0, -0.5, -1.0, -1.5, -2.0])
-    _labels = [f"t{i}" for i in range(10)]
-
+def _(mo, softmax_with_temperature, top_k_sampling, top_p_sampling):
+    # Check if all functions are implemented
     try:
-        # Q1: top-k with k=3 at T=1
-        _probs_t1 = softmax_with_temperature(_z, 1.0)
-        _topk3 = top_k_sampling(_probs_t1, 3)
+        softmax_with_temperature([0], 1.0)
+        top_k_sampling([0.5, 0.5], 1)
+        top_p_sampling([0.5, 0.5], 0.5)
+        _ex2_ready = True
+    except NotImplementedError:
+        _ex2_ready = False
 
-        _q1_df = pd.DataFrame(
-            {"Token": _labels, "Original P": [f"{p:.4f}" for p in _probs_t1], "Top-k=3 P": [f"{p:.4f}" for p in _topk3]}
+    if _ex2_ready:
+        ex2_k_slider = mo.ui.slider(1, 10, value=3, step=1, label="k", show_value=True)
+        ex2_p_slider = mo.ui.slider(
+            0.1, 1.0, value=0.8, step=0.05, label="p", show_value=True
         )
-
-        # Q2: top-p with p=0.8 at T=1
-        _topp80 = top_p_sampling(_probs_t1, 0.8)
-        _n_included_q2 = int(np.sum(_topp80 > 0))
-
-        _q2_df = pd.DataFrame(
-            {"Token": _labels, "Original P": [f"{p:.4f}" for p in _probs_t1], "Top-p=0.8 P": [f"{p:.4f}" for p in _topp80]}
+        ex2_T_slider = mo.ui.slider(
+            0.5, 5.0, value=1.0, step=0.5, label="Temperature T", show_value=True
         )
-
-        # Q3: top-p with p=0.8 at T=2
-        _probs_t2 = softmax_with_temperature(_z, 2.0)
-        _topp80_t2 = top_p_sampling(_probs_t2, 0.8)
-        _n_included_q3 = int(np.sum(_topp80_t2 > 0))
-
-        _q3_df = pd.DataFrame(
-            {
-                "Token": _labels,
-                "P (T=2)": [f"{p:.4f}" for p in _probs_t2],
-                "Top-p=0.8 (T=2) P": [f"{p:.4f}" for p in _topp80_t2],
-            }
-        )
-
         mo.vstack(
             [
-                mo.md("### Results for Exercise 2"),
-                mo.md("**Q1: Top-k with k=3** (sampling probabilities):"),
-                mo.ui.table(_q1_df, selection=None),
-                mo.md(f"**Q2: Top-p with p=0.8 at T=1.** Number of tokens included: **{_n_included_q2}**"),
-                mo.ui.table(_q2_df, selection=None),
-                mo.md(
-                    f"**Q3: Top-p with p=0.8 at T=2.** Number of tokens included: **{_n_included_q3}**"
-                    + (
-                        f" (changed from {_n_included_q2})"
-                        if _n_included_q2 != _n_included_q3
-                        else f" (same as Q2)"
-                    )
-                ),
-                mo.ui.table(_q3_df, selection=None),
+                mo.md("### Interactive Explorer"),
+                mo.md("Drag the sliders to see how top-k, top-p, and temperature interact:"),
+                mo.hstack([ex2_k_slider, ex2_p_slider, ex2_T_slider]),
             ]
         )
-    except NotImplementedError:
+    else:
+        ex2_k_slider = None
+        ex2_p_slider = None
+        ex2_T_slider = None
         mo.callout(
             mo.md(
                 "Implement `softmax_with_temperature`, `top_k_sampling`, and `top_p_sampling` above, then re-run."
             ),
             kind="warn",
         )
+    return ex2_T_slider, ex2_k_slider, ex2_p_slider
+
+
+@app.cell(hide_code=True)
+def _(
+    alt,
+    ex2_T_slider,
+    ex2_k_slider,
+    ex2_p_slider,
+    mo,
+    np,
+    pd,
+    softmax_with_temperature,
+    top_k_sampling,
+    top_p_sampling,
+):
+    if ex2_k_slider is None:
+        mo.output.replace(mo.md(""))
+    else:
+        _z = np.array([3.0, 2.0, 1.5, 1.0, 0.5, 0.0, -0.5, -1.0, -1.5, -2.0])
+        _labels = [f"t{i}" for i in range(10)]
+        _k = ex2_k_slider.value
+        _p = ex2_p_slider.value
+        _T = ex2_T_slider.value
+
+        _probs = softmax_with_temperature(_z, _T)
+        _topk = top_k_sampling(_probs, _k)
+        _topp = top_p_sampling(_probs, _p)
+
+        def _make_bar_chart(orig, filtered, title, color_inc, labels):
+            rows = []
+            for i, (lab, o, f) in enumerate(zip(labels, orig, filtered)):
+                rows.append(
+                    {
+                        "Token": lab,
+                        "Original": o,
+                        "Filtered": f,
+                        "Status": "Included" if f > 0 else "Excluded",
+                        "order": i,
+                    }
+                )
+            df = pd.DataFrame(rows)
+
+            base = alt.Chart(df).encode(
+                x=alt.X("Token:N", sort=labels, axis=alt.Axis(labelFontSize=12)),
+            )
+
+            # Ghost bars for original distribution
+            ghost = base.mark_bar(
+                color="#e0e0e0", cornerRadiusTopLeft=3, cornerRadiusTopRight=3, size=28
+            ).encode(
+                y=alt.Y("Original:Q", scale=alt.Scale(domain=[0, max(orig) * 1.15])),
+                tooltip=[
+                    "Token",
+                    alt.Tooltip("Original:Q", format=".4f", title="Original P"),
+                ],
+            )
+
+            # Colored bars for filtered distribution
+            bars = base.mark_bar(
+                cornerRadiusTopLeft=3, cornerRadiusTopRight=3, size=18
+            ).encode(
+                y=alt.Y("Filtered:Q"),
+                color=alt.Color(
+                    "Status:N",
+                    scale=alt.Scale(
+                        domain=["Included", "Excluded"],
+                        range=[color_inc, "#cccccc"],
+                    ),
+                    legend=alt.Legend(title=""),
+                ),
+                tooltip=[
+                    "Token",
+                    alt.Tooltip("Original:Q", format=".4f", title="Original P"),
+                    alt.Tooltip("Filtered:Q", format=".4f", title="Filtered P"),
+                    "Status",
+                ],
+            )
+
+            # Probability labels on included bars
+            text = (
+                base.transform_filter(alt.datum.Filtered > 0)
+                .mark_text(dy=-10, fontSize=10, fontWeight="bold")
+                .encode(
+                    y="Filtered:Q",
+                    text=alt.Text("Filtered:Q", format=".3f"),
+                )
+            )
+
+            n_inc = int(np.sum(np.array([r["Filtered"] for r in rows]) > 0))
+            return (ghost + bars + text).properties(
+                width=320, height=220, title=f"{title} ({n_inc} tokens included)"
+            )
+
+        _chart_k = _make_bar_chart(
+            _probs, _topk, f"Top-k (k={_k})", "#4dabf7", _labels
+        )
+        _chart_p = _make_bar_chart(
+            _probs, _topp, f"Top-p (p={_p:.2f})", "#51cf66", _labels
+        )
+
+        mo.vstack(
+            [
+                mo.hstack([_chart_k, _chart_p], justify="center", gap=1.5),
+                mo.md(
+                    f"Gray bars show the original distribution at T={_T}. "
+                    f"Colored bars show the renormalized probabilities after filtering."
+                ),
+            ]
+        )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo, np, pd, softmax_with_temperature, top_k_sampling, top_p_sampling):
+    # --- Fixed answer tables for the paper ---
+    _z = np.array([3.0, 2.0, 1.5, 1.0, 0.5, 0.0, -0.5, -1.0, -1.5, -2.0])
+    _labels = [f"t{i}" for i in range(10)]
+
+    try:
+        _probs_t1 = softmax_with_temperature(_z, 1.0)
+        _topk3 = top_k_sampling(_probs_t1, 3)
+        _topp80 = top_p_sampling(_probs_t1, 0.8)
+        _n_q2 = int(np.sum(_topp80 > 0))
+
+        _probs_t2 = softmax_with_temperature(_z, 2.0)
+        _topp80_t2 = top_p_sampling(_probs_t2, 0.8)
+        _n_q3 = int(np.sum(_topp80_t2 > 0))
+
+        _q1_df = pd.DataFrame(
+            {"Token": _labels, "Original P": [f"{p:.4f}" for p in _probs_t1], "Top-k=3 P": [f"{p:.4f}" for p in _topk3]}
+        )
+        _q2_df = pd.DataFrame(
+            {"Token": _labels, "Original P": [f"{p:.4f}" for p in _probs_t1], "Top-p=0.8 P": [f"{p:.4f}" for p in _topp80]}
+        )
+        _q3_df = pd.DataFrame(
+            {"Token": _labels, "P (T=2)": [f"{p:.4f}" for p in _probs_t2], "Top-p=0.8 (T=2) P": [f"{p:.4f}" for p in _topp80_t2]}
+        )
+
+        mo.vstack(
+            [
+                mo.md("### Answers for the Paper"),
+                mo.md("**Q1: Top-k with k=3** (sampling probabilities):"),
+                mo.ui.table(_q1_df, selection=None),
+                mo.md(f"**Q2: Top-p with p=0.8 at T=1.** Number of tokens included: **{_n_q2}**"),
+                mo.ui.table(_q2_df, selection=None),
+                mo.md(
+                    f"**Q3: Top-p with p=0.8 at T=2.** Number of tokens included: **{_n_q3}**"
+                    + (f" (changed from {_n_q2})" if _n_q2 != _n_q3 else " (same as Q2)")
+                ),
+                mo.ui.table(_q3_df, selection=None),
+            ]
+        )
+    except NotImplementedError:
+        mo.output.replace(mo.md(""))
     return
 
 
@@ -334,7 +536,7 @@ def _(mo):
 
 
 @app.cell
-def _(mo, step1_logprobs, step2_logprobs, step3_logprobs):
+def _():
     def greedy_search(step1_lp, step2_lp, step3_lp):
         """Perform greedy decoding (B=1).
 
@@ -356,22 +558,11 @@ def _(mo, step1_logprobs, step2_logprobs, step3_logprobs):
         # Track cumulative log-probability throughout.
         raise NotImplementedError("Implement greedy_search")
 
-    try:
-        _seq, _lp = greedy_search(step1_logprobs, step2_logprobs, step3_logprobs)
-        mo.vstack(
-            [
-                mo.md("### Q1: Greedy Decoding"),
-                mo.md(f"**Sequence:** {' '.join(_seq)}"),
-                mo.md(f"**Cumulative log-probability:** {_lp:.2f}"),
-            ]
-        )
-    except NotImplementedError:
-        mo.callout(mo.md("Implement `greedy_search` above, then re-run."), kind="warn")
     return (greedy_search,)
 
 
 @app.cell
-def _(mo, step1_logprobs, step2_logprobs, step3_logprobs):
+def _():
     def beam_search(step1_lp, step2_lp, step3_lp, B):
         """Perform beam search with beam width B.
 
@@ -386,7 +577,6 @@ def _(mo, step1_logprobs, step2_logprobs, step3_logprobs):
         Returns:
             list of (cumulative_log_prob, sequence_list) for the top B beams,
             sorted best-first.
-            Also return a dict of step-by-step candidate details for display.
         """
         vocab = ["a", "b"]
         # TODO: implement beam search
@@ -399,22 +589,220 @@ def _(mo, step1_logprobs, step2_logprobs, step3_logprobs):
         # After 3 steps, return the final beams.
         raise NotImplementedError("Implement beam_search")
 
-    try:
-        _beams = beam_search(step1_logprobs, step2_logprobs, step3_logprobs, B=3)
-        _lines = ["### Q2: Beam Search (B=3)", ""]
-        _lines.append("**Final beams (sorted best-first):**")
-        _lines.append("")
-        _lines.append("| Rank | Sequence | Cumulative log-prob |")
-        _lines.append("|------|----------|-------------------|")
-        for _i, (_lp, _seq) in enumerate(_beams):
-            _lines.append(f"| {_i+1} | {' '.join(_seq)} | {_lp:.2f} |")
-        _lines.append("")
-        _lines.append(f"**Top sequence:** {' '.join(_beams[0][1])}")
-        _lines.append(f"**Log-probability:** {_beams[0][0]:.2f}")
-        mo.md("\n".join(_lines))
-    except NotImplementedError:
-        mo.callout(mo.md("Implement `beam_search` above, then re-run."), kind="warn")
     return (beam_search,)
+
+
+@app.cell(hide_code=True)
+def _(mo, beam_search, greedy_search, step1_logprobs, step2_logprobs, step3_logprobs):
+    # Check readiness
+    try:
+        greedy_search(step1_logprobs, step2_logprobs, step3_logprobs)
+        _greedy_ok = True
+    except NotImplementedError:
+        _greedy_ok = False
+    try:
+        beam_search(step1_logprobs, step2_logprobs, step3_logprobs, 3)
+        _beam_ok = True
+    except NotImplementedError:
+        _beam_ok = False
+
+    if _greedy_ok:
+        _seq, _lp = greedy_search(step1_logprobs, step2_logprobs, step3_logprobs)
+        _greedy_md = mo.md(
+            f"### Q1: Greedy Decoding\n\n"
+            f"**Sequence:** {' '.join(_seq)}\n\n"
+            f"**Cumulative log-probability:** {_lp:.2f}"
+        )
+    else:
+        _greedy_md = mo.callout(
+            mo.md("Implement `greedy_search` above, then re-run."), kind="warn"
+        )
+
+    if _beam_ok:
+        ex3_B_slider = mo.ui.slider(1, 4, value=3, step=1, label="Beam width B", show_value=True)
+        mo.vstack([_greedy_md, mo.md("---"), mo.md("### Q2: Beam Search"), ex3_B_slider])
+    else:
+        ex3_B_slider = None
+        mo.vstack([
+            _greedy_md,
+            mo.md("---"),
+            mo.callout(mo.md("Implement `beam_search` above, then re-run."), kind="warn"),
+        ])
+    return (ex3_B_slider,)
+
+
+@app.cell(hide_code=True)
+def _(
+    alt,
+    beam_search,
+    ex3_B_slider,
+    greedy_search,
+    mo,
+    np,
+    pd,
+    step1_logprobs,
+    step2_logprobs,
+    step3_logprobs,
+):
+    if ex3_B_slider is None:
+        mo.output.replace(mo.md(""))
+    else:
+        _B = ex3_B_slider.value
+        _vocab = ["a", "b"]
+
+        # Run beam search step-by-step, recording all candidates and survivors
+        _beams = [(0.0, [])]
+        _all_steps = []  # list of dicts per step: candidates + survivors
+
+        for _step in range(3):
+            _cands = []
+            for _lp, _seq in _beams:
+                for _t in _vocab:
+                    if _step == 0:
+                        _nlp = _lp + step1_logprobs[_t]
+                    elif _step == 1:
+                        _nlp = _lp + step2_logprobs[_seq[-1]][_t]
+                    else:
+                        _nlp = _lp + step3_logprobs[(_seq[-2], _seq[-1])][_t]
+                    _cands.append((_nlp, _seq + [_t]))
+            _cands.sort(key=lambda x: x[0], reverse=True)
+            _survivors = _cands[:_B]
+            _all_steps.append({"candidates": _cands, "survivors": _survivors})
+            _beams = _survivors
+
+        # Also run greedy for comparison
+        try:
+            _greedy_seq, _greedy_lp = greedy_search(
+                step1_logprobs, step2_logprobs, step3_logprobs
+            )
+        except NotImplementedError:
+            _greedy_seq, _greedy_lp = None, None
+
+        # Build heatmap data: show all candidates at each step with survive status
+        _rows = []
+        for _si, _step_data in enumerate(_all_steps):
+            _surv_seqs = {tuple(s) for _, s in _step_data["survivors"]}
+            for _ci, (_lp, _seq) in enumerate(_step_data["candidates"]):
+                _is_surv = tuple(_seq) in _surv_seqs
+                _label = " ".join(_seq)
+                _rows.append(
+                    {
+                        "Step": _si + 1,
+                        "Sequence": _label,
+                        "Log-prob": _lp,
+                        "Status": "Kept" if _is_surv else "Pruned",
+                        "rank": _ci,
+                    }
+                )
+        _df = pd.DataFrame(_rows)
+
+        # Heatmap of all candidates at each step
+        _hm = (
+            alt.Chart(_df)
+            .mark_rect(cornerRadius=4, stroke="white", strokeWidth=2)
+            .encode(
+                x=alt.X("Step:O", title="Step", axis=alt.Axis(labelFontSize=14)),
+                y=alt.Y(
+                    "rank:O",
+                    title="Candidate rank",
+                    axis=alt.Axis(labelFontSize=12),
+                    sort="ascending",
+                ),
+                color=alt.Color(
+                    "Log-prob:Q",
+                    scale=alt.Scale(scheme="viridis"),
+                    legend=alt.Legend(format=".2f", title="Cumul. log-prob"),
+                ),
+                stroke=alt.condition(
+                    alt.datum.Status == "Kept",
+                    alt.value("#ff6b6b"),
+                    alt.value("white"),
+                ),
+                strokeWidth=alt.condition(
+                    alt.datum.Status == "Kept",
+                    alt.value(3),
+                    alt.value(1),
+                ),
+                opacity=alt.condition(
+                    alt.datum.Status == "Kept",
+                    alt.value(1.0),
+                    alt.value(0.35),
+                ),
+                tooltip=[
+                    "Step:O",
+                    "Sequence:N",
+                    alt.Tooltip("Log-prob:Q", format=".2f"),
+                    "Status:N",
+                ],
+            )
+            .properties(width=250, height=max(_B * 2 * 55, 160))
+        )
+
+        _txt = (
+            alt.Chart(_df)
+            .mark_text(fontSize=12, fontWeight="bold")
+            .encode(
+                x="Step:O",
+                y=alt.Y("rank:O", sort="ascending"),
+                text="Sequence:N",
+                opacity=alt.condition(
+                    alt.datum.Status == "Kept",
+                    alt.value(1.0),
+                    alt.value(0.4),
+                ),
+            )
+        )
+
+        _chart = (_hm + _txt).properties(title=f"Beam Search (B={_B})")
+
+        # Final results table
+        _final_beams = _all_steps[-1]["survivors"]
+        _res_rows = []
+        for _i, (_lp, _seq) in enumerate(_final_beams):
+            _is_greedy = (
+                _greedy_seq is not None and " ".join(_seq) == " ".join(_greedy_seq)
+            )
+            _res_rows.append(
+                {
+                    "Rank": _i + 1,
+                    "Sequence": " ".join(_seq),
+                    "Log-prob": f"{_lp:.2f}",
+                    "Note": "= greedy" if _is_greedy else "",
+                }
+            )
+        _res_df = pd.DataFrame(_res_rows)
+
+        # Step-by-step detail in accordion
+        _detail_lines = []
+        for _si, _step_data in enumerate(_all_steps):
+            _detail_lines.append(f"**Step {_si + 1} candidates:**\n")
+            _surv_seqs = {tuple(s) for _, s in _step_data["survivors"]}
+            for _lp, _seq in _step_data["candidates"]:
+                _mark = " **[kept]**" if tuple(_seq) in _surv_seqs else ""
+                _detail_lines.append(
+                    f"- `{' '.join(_seq)}` : cumul. log-prob = {_lp:.2f}{_mark}"
+                )
+            _detail_lines.append("")
+
+        mo.vstack(
+            [
+                _chart,
+                mo.md(
+                    "Red borders mark the beams that survive each step. "
+                    "Pruned candidates are faded."
+                ),
+                mo.md("**Final beams:**"),
+                mo.ui.table(_res_df, selection=None),
+                mo.md(
+                    f"**Top sequence:** {' '.join(_final_beams[0][1])}  |  "
+                    f"**Log-probability:** {_final_beams[0][0]:.2f}"
+                ),
+                mo.accordion(
+                    {"Step-by-step candidate details": mo.md("\n".join(_detail_lines))}
+                ),
+            ]
+        )
+    return
 
 
 @app.cell(hide_code=True)
