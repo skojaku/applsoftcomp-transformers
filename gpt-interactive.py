@@ -5,6 +5,7 @@
 #     "torch==2.6.0",
 #     "transformers==4.49.0",
 #     "numpy",
+#     "plotly",
 # ]
 # ///
 
@@ -441,24 +442,34 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(beam_k_slider, beam_steps_slider, device, mo, model, np, tokenizer, torch):
+def _(beam_k_slider, beam_steps_slider, device, model, np, tokenizer, torch):
+    import plotly.graph_objects as go
+
     _k = beam_k_slider.value
     _n_steps = beam_steps_slider.value
     _prompt = "I wish I could be"
 
-    # Run beam search step by step
     _input_ids = tokenizer(_prompt, return_tensors="pt").input_ids.to(device)
 
-    # Each beam: (token_ids, cumulative_log_prob)
-    _beams = [(_input_ids[0].tolist(), 0.0)]
+    # ── Run beam search, recording the full tree ──
+    # Each node: (node_id, parent_id, step, token_str, cumul_score, survived)
+    _nodes = []  # list of dicts
+    _node_id = 0
 
-    _step_records = []
+    # Root node
+    _nodes.append(dict(
+        id=_node_id, parent=None, step=0,
+        token=_prompt, score=0.0, survived=True, seq=_input_ids[0].tolist(),
+    ))
+    _node_id += 1
 
-    for _step in range(_n_steps):
-        _candidates = []
-        _expansions = {}  # for visualization: beam_idx -> [(token, log_prob)]
+    # Active beams: list of (node_id, seq, cumul_score)
+    _active = [(0, _input_ids[0].tolist(), 0.0)]
 
-        for _b_idx, (_seq, _score) in enumerate(_beams):
+    for _step in range(1, _n_steps + 1):
+        _candidates = []  # (parent_node_id, seq, score, token_str, token_log_prob)
+
+        for _parent_nid, _seq, _parent_score in _active:
             _ids = torch.tensor([_seq], device=device)
             with torch.no_grad():
                 _out = model(_ids)
@@ -466,63 +477,182 @@ def _(beam_k_slider, beam_steps_slider, device, mo, model, np, tokenizer, torch)
             _log_probs = torch.nn.functional.log_softmax(_logits, dim=-1)
             _top_vals, _top_ids = torch.topk(_log_probs, _k)
 
-            _exps = []
             for _v, _tid in zip(_top_vals.cpu().numpy(), _top_ids.cpu().numpy()):
+                _tok_str = tokenizer.decode([int(_tid)])
+                _new_score = _parent_score + float(_v)
                 _new_seq = _seq + [int(_tid)]
-                _new_score = _score + float(_v)
-                _candidates.append((_new_seq, _new_score))
-                _exps.append((tokenizer.decode([int(_tid)]), float(_v)))
-            _expansions[_b_idx] = _exps
+                _candidates.append((_parent_nid, _new_seq, _new_score, _tok_str, float(_v)))
 
-        # Keep top-k candidates
-        _candidates.sort(key=lambda x: x[1], reverse=True)
-        _beams = _candidates[:_k]
+        # Sort and keep top-k
+        _candidates.sort(key=lambda x: x[2], reverse=True)
+        _survivors = set(range(_k))
 
-        _step_records.append({
-            "expansions": _expansions,
-            "surviving_beams": [
-                (tokenizer.decode(seq[len(_input_ids[0]):]), score)
-                for seq, score in _beams
-            ],
-        })
+        _new_active = []
+        for _c_idx, (_par, _seq, _sc, _tok, _lp) in enumerate(_candidates):
+            _surv = _c_idx in _survivors
+            _nodes.append(dict(
+                id=_node_id, parent=_par, step=_step,
+                token=_tok, score=_sc, survived=_surv, seq=_seq,
+                log_prob=_lp,
+            ))
+            if _surv:
+                _new_active.append((_node_id, _seq, _sc))
+            _node_id += 1
 
-    # Build visualization
-    _prompt_len = len(_input_ids[0])
-    _html_parts = [f'**Prompt:** "{_prompt}"\n\n']
+        _active = _new_active
 
-    for _s, _rec in enumerate(_step_records):
-        _html_parts.append(f"### Step {_s + 1}\n\n")
+    # ── Layout: x = step, y = spread nodes vertically per step ──
+    _step_nodes = {}
+    for _n in _nodes:
+        _s = _n["step"]
+        _step_nodes.setdefault(_s, []).append(_n)
 
-        # Show expansions
-        _html_parts.append("**Expanding beams** (each beam tries top-{} tokens):\n\n".format(_k))
-        for _b_idx, _exps in _rec["expansions"].items():
-            _beam_label = f"Beam {_b_idx + 1}"
-            _exp_strs = [f"`{tok}` ({lp:.2f})" for tok, lp in _exps]
-            _html_parts.append(f"- {_beam_label} → {', '.join(_exp_strs)}\n")
+    _pos = {}  # node_id -> (x, y)
+    for _s, _ns in _step_nodes.items():
+        _count = len(_ns)
+        for _i, _n in enumerate(_ns):
+            _y = (_i - (_count - 1) / 2)  # center around 0
+            _pos[_n["id"]] = (_s, _y)
 
-        _html_parts.append("\n**Surviving beams** (top-{} by total score):\n\n".format(_k))
-        for _i, (_decoded, _score) in enumerate(_rec["surviving_beams"]):
-            _bar_width = max(5, int(np.exp(_score) * 300))
-            _html_parts.append(
-                f'<div style="display:flex;align-items:center;margin:3px 0;">'
-                f'<span style="width:24px;font-weight:bold;color:#4a90d9">{_i+1}.</span>'
-                f'<div style="background:#4a90d9;height:20px;width:{_bar_width}px;border-radius:3px;margin-right:8px"></div>'
-                f'<code>{_decoded}</code>'
-                f'<span style="margin-left:8px;color:#666;font-size:0.85em">(score: {_score:.2f})</span>'
-                f'</div>\n'
+    # ── Build plotly traces ──
+    # Edges
+    _edge_x, _edge_y = [], []
+    _pruned_edge_x, _pruned_edge_y = [], []
+    for _n in _nodes:
+        if _n["parent"] is not None:
+            _px, _py = _pos[_n["parent"]]
+            _cx, _cy = _pos[_n["id"]]
+            _target = _edge_x if _n["survived"] else _pruned_edge_x
+            _target_y = _edge_y if _n["survived"] else _pruned_edge_y
+            _target.extend([_px, _cx, None])
+            _target_y.extend([_py, _cy, None])
+
+    # Edge traces
+    _traces = []
+    if _pruned_edge_x:
+        _traces.append(go.Scatter(
+            x=_pruned_edge_x, y=_pruned_edge_y, mode="lines",
+            line=dict(color="#dddddd", width=1.5, dash="dot"),
+            hoverinfo="none", showlegend=False,
+        ))
+    _traces.append(go.Scatter(
+        x=_edge_x, y=_edge_y, mode="lines",
+        line=dict(color="#4a90d9", width=2.5),
+        hoverinfo="none", showlegend=False,
+    ))
+
+    # Edge labels (token text at midpoint)
+    _label_x, _label_y, _label_text = [], [], []
+    for _n in _nodes:
+        if _n["parent"] is not None:
+            _px, _py = _pos[_n["parent"]]
+            _cx, _cy = _pos[_n["id"]]
+            _mx = (_px + _cx) / 2
+            _my = (_py + _cy) / 2
+            _lp = _n.get("log_prob", 0)
+            _label_x.append(_mx)
+            _label_y.append(_my)
+            _color = "#333" if _n["survived"] else "#bbb"
+            _label_text.append(
+                f'<span style="color:{_color}">{_n["token"]}<br>({_lp:.2f})</span>'
             )
-        _html_parts.append("\n")
 
-    # Final result
-    _html_parts.append("### Final output\n\n")
-    _best_text = _step_records[-1]["surviving_beams"][0][0]
-    _html_parts.append(
-        f'The best beam after {_n_steps} steps: **"{_prompt}{_best_text}"**\n\n'
-        f"Greedy would have only followed the single top path. "
-        f"With {_k} beams, we explored {_k} alternatives at every step."
+    _traces.append(go.Scatter(
+        x=_label_x, y=_label_y, mode="text",
+        text=[_n["token"] + f'\n({_n.get("log_prob", 0):.2f})'
+              if _n["parent"] is not None else ""
+              for _nid in range(len(_label_x))
+              for _n in [_nodes[0]]]  # placeholder, replaced below
+        if False else _label_text,
+        textfont=dict(size=10),
+        textposition="middle right",
+        hoverinfo="none", showlegend=False,
+    ))
+
+    # Survived nodes
+    _surv_nodes = [_n for _n in _nodes if _n["survived"]]
+    _prune_nodes = [_n for _n in _nodes if not _n["survived"]]
+
+    if _prune_nodes:
+        _traces.append(go.Scatter(
+            x=[_pos[_n["id"]][0] for _n in _prune_nodes],
+            y=[_pos[_n["id"]][1] for _n in _prune_nodes],
+            mode="markers",
+            marker=dict(size=14, color="#dddddd", line=dict(width=1, color="#ccc")),
+            text=[f"<b>{_n['token']}</b><br>Score: {_n['score']:.2f}<br><i>Pruned</i>"
+                  for _n in _prune_nodes],
+            hoverinfo="text", showlegend=False,
+        ))
+
+    # Highlight the best path
+    _best_node = max(_active, key=lambda x: x[2])
+    _best_nid = _best_node[0]
+    _best_path_ids = set()
+    _trace_id = _best_nid
+    while _trace_id is not None:
+        _best_path_ids.add(_trace_id)
+        _parent = next((_n["parent"] for _n in _nodes if _n["id"] == _trace_id), None)
+        _trace_id = _parent
+
+    _surv_colors = ["#ff6b35" if _n["id"] in _best_path_ids else "#4a90d9" for _n in _surv_nodes]
+    _surv_sizes = [20 if _n["id"] in _best_path_ids else 16 for _n in _surv_nodes]
+
+    _traces.append(go.Scatter(
+        x=[_pos[_n["id"]][0] for _n in _surv_nodes],
+        y=[_pos[_n["id"]][1] for _n in _surv_nodes],
+        mode="markers+text",
+        marker=dict(size=_surv_sizes, color=_surv_colors,
+                    line=dict(width=2, color="white")),
+        text=[_n["token"] if _n["step"] == 0 else "" for _n in _surv_nodes],
+        textposition="middle left",
+        textfont=dict(size=11, color="#333"),
+        customdata=[[_n["token"], f"{_n['score']:.2f}"] for _n in _surv_nodes],
+        hovertemplate="<b>%{customdata[0]}</b><br>Score: %{customdata[1]}<extra></extra>",
+        showlegend=False,
+    ))
+
+    # Best path edges highlighted
+    _bp_edge_x, _bp_edge_y = [], []
+    for _nid in _best_path_ids:
+        _n = next((_n for _n in _nodes if _n["id"] == _nid), None)
+        if _n and _n["parent"] is not None and _n["parent"] in _best_path_ids:
+            _px, _py = _pos[_n["parent"]]
+            _cx, _cy = _pos[_n["id"]]
+            _bp_edge_x.extend([_px, _cx, None])
+            _bp_edge_y.extend([_py, _cy, None])
+
+    if _bp_edge_x:
+        _traces.append(go.Scatter(
+            x=_bp_edge_x, y=_bp_edge_y, mode="lines",
+            line=dict(color="#ff6b35", width=4),
+            hoverinfo="none", showlegend=False,
+        ))
+
+    # Build the best sequence text
+    _best_text = tokenizer.decode(_best_node[1][len(_input_ids[0]):])
+
+    _fig = go.Figure(data=_traces)
+    _fig.update_layout(
+        title=dict(
+            text=f'Beam Search Tree (k={_k})<br>'
+                 f'<span style="font-size:13px;color:#666">Best path (orange): '
+                 f'"{_prompt}<b>{_best_text}</b>" (score: {_best_node[2]:.2f})</span>',
+            font=dict(size=16),
+        ),
+        xaxis=dict(
+            title="Step", showgrid=False, zeroline=False,
+            tickmode="array",
+            tickvals=list(range(_n_steps + 1)),
+            ticktext=["prompt"] + [f"step {i}" for i in range(1, _n_steps + 1)],
+        ),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        plot_bgcolor="white",
+        height=max(350, len(_nodes) * 28),
+        margin=dict(l=40, r=40, t=80, b=40),
+        hoverlabel=dict(bgcolor="white"),
     )
 
-    mo.md("".join(_html_parts))
+    _fig
     return
 
 
