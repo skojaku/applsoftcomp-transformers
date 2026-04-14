@@ -478,101 +478,106 @@ def _(mo):
 
     ## Exercise 3: Beam Search
 
-    This exercise is best done by hand, but you can use the code below to verify your answers.
+    Vocab $\{a, b, c, d, e\}$, three steps. Transition probabilities follow $p(1-p)^d$ normalized per row, where $d = |i-j|$ is the distance between token positions and $p = 0.5$. Step 3 conditions only on the first token $t_1$, not $t_2$.
 
-    Vocab: $\{a, b\}$, three steps. Step 3 depends on both previous tokens.
-
-    The log-probability tables are pre-loaded below. Run the greedy and beam search
-    cells to check your pen-and-paper work.
+    The log-probability tables and transition matrix are pre-loaded below. Implement `greedy_search` and `beam_search`, then use the visualizations to verify your pen-and-paper work.
     """)
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    # Log-probability tables
-    step1_logprobs = {"a": -0.51, "b": -0.92}
-    step2_logprobs = {
-        "a": {"a": -1.20, "b": -0.36},
-        "b": {"a": -0.22, "b": -1.61},
-    }
-    step3_logprobs = {
-        ("a", "a"): {"a": -1.61, "b": -0.22},
-        ("a", "b"): {"a": -0.92, "b": -0.51},
-        ("b", "a"): {"a": -0.11, "b": -2.30},
-        ("b", "b"): {"a": -0.92, "b": -0.51},
+    # Data for Exercise 3
+    vocab = ["a", "b", "c", "d", "e"]
+
+    # Step 1: log-probs from start
+    step1_logprobs = {"a": -2.30, "b": -1.61, "c": -0.92, "d": -1.61, "e": -2.30}
+
+    # Transition table: used for step 2 (conditioned on t2) and step 3 (conditioned on t1).
+    # p(1-p)^d normalized per row, p=0.5, d = |i-j|.
+    trans_logprobs = {
+        "a": {"a": -0.66, "b": -1.35, "c": -2.05, "d": -2.74, "e": -3.43},
+        "b": {"a": -1.56, "b": -0.86, "c": -1.56, "d": -2.25, "e": -2.94},
+        "c": {"a": -2.30, "b": -1.61, "c": -0.92, "d": -1.61, "e": -2.30},
+        "d": {"a": -2.94, "b": -2.25, "c": -1.56, "d": -0.86, "e": -1.56},
+        "e": {"a": -3.43, "b": -2.74, "c": -2.05, "d": -1.35, "e": -0.66},
     }
 
     mo.md(
         """
-        **Log-probability tables (pre-loaded):**
+    **Log-probability tables (pre-loaded as `step1_logprobs` and `trans_logprobs`):**
 
-        | Step 1 | ln P |
-        |--------|------|
-        | a | -0.51 |
-        | b | -0.92 |
+    **Step 1** (from start):
 
-        | Step 2 (from) | ln P(a) | ln P(b) |
-        |---------------|---------|---------|
-        | a | -1.20 | -0.36 |
-        | b | -0.22 | -1.61 |
+    | Token | ln P |
+    |-------|------|
+    | a | -2.30 |
+    | b | -1.61 |
+    | c | -0.92 |
+    | d | -1.61 |
+    | e | -2.30 |
 
-        | Step 3 (from) | ln P(a) | ln P(b) |
-        |---------------|---------|---------|
-        | (a,a) | -1.61 | -0.22 |
-        | (a,b) | -0.92 | -0.51 |
-        | (b,a) | -0.11 | -2.30 |
-        | (b,b) | -0.92 | -0.51 |
+    **Step 2** (conditioned on previous token) **and Step 3** (conditioned on *first* token $t_1$):
+
+    | From | ln P(a) | ln P(b) | ln P(c) | ln P(d) | ln P(e) |
+    |------|---------|---------|---------|---------|---------|
+    | a | -0.66 | -1.35 | -2.05 | -2.74 | -3.43 |
+    | b | -1.56 | -0.86 | -1.56 | -2.25 | -2.94 |
+    | c | -2.30 | -1.61 | -0.92 | -1.61 | -2.30 |
+    | d | -2.94 | -2.25 | -1.56 | -0.86 | -1.56 |
+    | e | -3.43 | -2.74 | -2.05 | -1.35 | -0.66 |
         """
     )
-    return step1_logprobs, step2_logprobs, step3_logprobs
+    return step1_logprobs, trans_logprobs, vocab
 
 
 @app.function
-def greedy_search(step1_lp, step2_lp, step3_lp):
-    """Perform greedy decoding (B=1).
-
-    At each step, pick the single token with the highest log-probability.
+def greedy_search(step1_lp, trans_lp, vocab):
+    """Perform greedy decoding (B=1) over 3 steps.
 
     Args:
         step1_lp: dict mapping token -> log-prob for step 1
-        step2_lp: dict mapping prev_token -> {token: log-prob} for step 2
-        step3_lp: dict mapping (prev2, prev1) -> {token: log-prob} for step 3
+        trans_lp: dict mapping token -> {token: log-prob} transition table.
+                  Step 2 conditions on the previous token (t2).
+                  Step 3 conditions on the first token (t1).
+        vocab: list of token strings
 
     Returns:
         (sequence_list, cumulative_log_prob)
-        e.g. (["a", "b", "b"], -1.38)
+        e.g. (["c", "c", "c"], -2.76)
     """
     # TODO: implement greedy decoding
     # Step 1: pick the token with the highest log-prob from step1_lp
-    # Step 2: given step 1's choice, pick the best token from step2_lp
-    # Step 3: given steps 1 & 2, pick the best token from step3_lp
+    # Step 2: given step 1's choice, pick the best from trans_lp[t1]
+    # Step 3: look up trans_lp[t1] (the FIRST token, not t2)
     # Track cumulative log-probability throughout.
     raise NotImplementedError("Implement greedy_search")
 
 
 @app.function
-def beam_search(step1_lp, step2_lp, step3_lp, B):
-    """Perform beam search with beam width B.
-
-    At each step, expand all beams, score candidates, and keep the top B.
+def beam_search(step1_lp, trans_lp, vocab, B):
+    """Perform beam search with beam width B over 3 steps.
 
     Args:
         step1_lp: dict mapping token -> log-prob for step 1
-        step2_lp: dict mapping prev_token -> {token: log-prob} for step 2
-        step3_lp: dict mapping (prev2, prev1) -> {token: log-prob} for step 3
+        trans_lp: dict mapping token -> {token: log-prob} transition table.
+                  Step 2 conditions on the previous token (t2).
+                  Step 3 conditions on the first token (t1).
+        vocab: list of token strings
         B: beam width
 
     Returns:
         list of (cumulative_log_prob, sequence_list) for the top B beams,
         sorted best-first.
     """
-    vocab = ["a", "b"]
     # TODO: implement beam search
     # Start with a single beam: (0.0, [])
     # At each step:
     #   1. Expand each beam by appending every vocab token.
     #   2. Score each candidate (add the new token's log-prob).
+    #      - Step 1: use step1_lp[token]
+    #      - Step 2: use trans_lp[seq[-1]][token]  (condition on previous)
+    #      - Step 3: use trans_lp[seq[0]][token]   (condition on FIRST token)
     #   3. Sort candidates by cumulative log-prob (descending).
     #   4. Keep only the top B candidates.
     # After 3 steps, return the final beams.
@@ -580,74 +585,64 @@ def beam_search(step1_lp, step2_lp, step3_lp, B):
 
 
 @app.cell(hide_code=True)
-def _(mo, step1_logprobs, step2_logprobs, step3_logprobs):
+def _(mo, step1_logprobs, trans_logprobs, vocab):
     # Check readiness
     try:
-        greedy_search(step1_logprobs, step2_logprobs, step3_logprobs)
+        greedy_search(step1_logprobs, trans_logprobs, vocab)
         _greedy_ok = True
     except NotImplementedError:
         _greedy_ok = False
     try:
-        beam_search(step1_logprobs, step2_logprobs, step3_logprobs, 3)
+        beam_search(step1_logprobs, trans_logprobs, vocab, 3)
         _beam_ok = True
     except NotImplementedError:
         _beam_ok = False
 
     if _greedy_ok:
-        _seq, _lp = greedy_search(step1_logprobs, step2_logprobs, step3_logprobs)
+        _seq, _lp = greedy_search(step1_logprobs, trans_logprobs, vocab)
         _greedy_md = mo.md(
-            f"### Q1: Greedy Decoding\n\n"
-            f"**Sequence:** {' '.join(_seq)}\n\n"
-            f"**Cumulative log-probability:** {_lp:.2f}"
+            f"### Q1: Greedy Decoding\n\n**Sequence:** {' '.join(_seq)}\n\n**Cumulative log-probability:** {_lp:.2f}"
         )
     else:
-        _greedy_md = mo.callout(
-            mo.md("Implement `greedy_search` above, then re-run."), kind="warn"
-        )
+        _greedy_md = mo.callout(mo.md("Implement `greedy_search` above, then re-run."), kind="warn")
 
     if _beam_ok:
-        ex3_B_slider = mo.ui.slider(1, 4, value=3, step=1, label="Beam width B", show_value=True)
+        ex3_B_slider = mo.ui.slider(1, 5, value=3, step=1, label="Beam width B", show_value=True)
         mo.vstack([_greedy_md, mo.md("---"), mo.md("### Q2: Beam Search"), ex3_B_slider])
     else:
         ex3_B_slider = None
-        mo.vstack([
-            _greedy_md,
-            mo.md("---"),
-            mo.callout(mo.md("Implement `beam_search` above, then re-run."), kind="warn"),
-        ])
+        mo.vstack(
+            [
+                _greedy_md,
+                mo.md("---"),
+                mo.callout(mo.md("Implement `beam_search` above, then re-run."), kind="warn"),
+            ]
+        )
     return (ex3_B_slider,)
 
 
 @app.cell(hide_code=True)
-def _(
-    alt,
-    ex3_B_slider,
-    mo,
-    pd,
-    step1_logprobs,
-    step2_logprobs,
-    step3_logprobs,
-):
+def _(alt, ex3_B_slider, mo, pd, step1_logprobs, trans_logprobs, vocab):
     if ex3_B_slider is None:
         mo.output.replace(mo.md(""))
     else:
         _B = ex3_B_slider.value
-        _vocab = ["a", "b"]
 
         # Run beam search step-by-step, recording all candidates and survivors
         _beams = [(0.0, [])]
-        _all_steps = []  # list of dicts per step: candidates + survivors
+        _all_steps = []
 
         for _step in range(3):
             _cands = []
             for _lp, _seq in _beams:
-                for _t in _vocab:
+                for _t in vocab:
                     if _step == 0:
                         _nlp = _lp + step1_logprobs[_t]
                     elif _step == 1:
-                        _nlp = _lp + step2_logprobs[_seq[-1]][_t]
+                        _nlp = _lp + trans_logprobs[_seq[-1]][_t]
                     else:
-                        _nlp = _lp + step3_logprobs[(_seq[-2], _seq[-1])][_t]
+                        # Step 3 conditions on t1 (the first token)
+                        _nlp = _lp + trans_logprobs[_seq[0]][_t]
                     _cands.append((_nlp, _seq + [_t]))
             _cands.sort(key=lambda x: x[0], reverse=True)
             _survivors = _cands[:_B]
@@ -656,13 +651,11 @@ def _(
 
         # Also run greedy for comparison
         try:
-            _greedy_seq, _greedy_lp = greedy_search(
-                step1_logprobs, step2_logprobs, step3_logprobs
-            )
+            _greedy_seq, _greedy_lp = greedy_search(step1_logprobs, trans_logprobs, vocab)
         except NotImplementedError:
             _greedy_seq, _greedy_lp = None, None
 
-        # Build heatmap data: show all candidates at each step with survive status
+        # Build heatmap data
         _rows = []
         for _si, _step_data in enumerate(_all_steps):
             _surv_seqs = {tuple(s) for _, s in _step_data["survivors"]}
@@ -719,12 +712,12 @@ def _(
                     "Status:N",
                 ],
             )
-            .properties(width=250, height=max(_B * 2 * 55, 160))
+            .properties(width=350, height=max(_B * 2 * 40, 200))
         )
 
         _txt = (
             alt.Chart(_df)
-            .mark_text(fontSize=12, fontWeight="bold")
+            .mark_text(fontSize=10, fontWeight="bold")
             .encode(
                 x="Step:O",
                 y=alt.Y("rank:O", sort="ascending"),
@@ -743,9 +736,7 @@ def _(
         _final_beams = _all_steps[-1]["survivors"]
         _res_rows = []
         for _i, (_lp, _seq) in enumerate(_final_beams):
-            _is_greedy = (
-                _greedy_seq is not None and " ".join(_seq) == " ".join(_greedy_seq)
-            )
+            _is_greedy = _greedy_seq is not None and " ".join(_seq) == " ".join(_greedy_seq)
             _res_rows.append(
                 {
                     "Rank": _i + 1,
@@ -763,27 +754,21 @@ def _(
             _surv_seqs = {tuple(s) for _, s in _step_data["survivors"]}
             for _lp, _seq in _step_data["candidates"]:
                 _mark = " **[kept]**" if tuple(_seq) in _surv_seqs else ""
-                _detail_lines.append(
-                    f"- `{' '.join(_seq)}` : cumul. log-prob = {_lp:.2f}{_mark}"
-                )
+                _seq_str = " ".join(_seq)
+                _detail_lines.append(f"- `{_seq_str}` : cumul. log-prob = {_lp:.2f}{_mark}")
             _detail_lines.append("")
 
         mo.vstack(
             [
                 _chart,
-                mo.md(
-                    "Red borders mark the beams that survive each step. "
-                    "Pruned candidates are faded."
-                ),
+                mo.md("Red borders mark the beams that survive each step. Pruned candidates are faded."),
                 mo.md("**Final beams:**"),
                 mo.ui.table(_res_df, selection=None),
                 mo.md(
                     f"**Top sequence:** {' '.join(_final_beams[0][1])}  |  "
                     f"**Log-probability:** {_final_beams[0][0]:.2f}"
                 ),
-                mo.accordion(
-                    {"Step-by-step candidate details": mo.md("\n".join(_detail_lines))}
-                ),
+                mo.accordion({"Step-by-step candidate details": mo.md("\n".join(_detail_lines))}),
             ]
         )
     return
