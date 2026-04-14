@@ -12,17 +12,23 @@ where temperature $T > 0$ scales the logits before softmax.
 
 A model outputs logits $z = [1, 0, -1]$ for tokens $\{a, b, c\}$.
 
-In a Colab notebook, implement softmax with temperature and compute the full probability distribution for $T \in \{0.5, 1, 2, 5\}$. Plot $P(\text{token})$ vs. $T$ for each token and describe what happens to the distribution as $T$ increases. Submit your notebook link.
+Implement softmax with temperature and compute the full probability distribution for $T \in \{0.5, 1, 2, 5\}$. Plot $P(\text{token})$ vs. $T$ for each token and describe what happens to the distribution as $T$ increases. 
 
-## Exercise 3: Nucleus Sampling
+## Exercise 2: Top-$k$ and Top-$p$ Sampling
 
-Nucleus sampling ($p$) includes the fewest tokens whose cumulative probability reaches $p$, then renormalizes. The number of included tokens depends on how peaked the distribution is.
+Both methods restrict sampling to a subset of tokens, then renormalize to a valid probability distribution.
 
-**Peaked distribution:** $P(a)=0.6,\ P(b)=0.2,\ P(c)=0.1,\ P(d)=0.1$.
+Top-$k$ keeps the $k$ highest-probability tokens and sets the rest to zero. Top-$p$ (nucleus sampling) keeps the fewest tokens whose cumulative probability reaches $p$.
 
-**Flat distribution:** $P(a)=0.35,\ P(b)=0.25,\ P(c)=0.22,\ P(d)=0.18$.
+A model produces logits over a 10-token vocabulary:
 
-1. For $p = 0.7$, how many tokens are included in each distribution?
+$$z = [3.0,\ 2.0,\ 1.5,\ 1.0,\ 0.5,\ 0.0,\ -0.5,\ -1.0,\ -1.5,\ -2.0]$$
+
+Implement both sampling methods and use them to answer the following. For each method, your function should return the renormalized probability distribution over all tokens (zero for excluded tokens).
+
+1. Apply top-$k$ with $k = 3$. What are the sampling probabilities for all 10 tokens?
+2. Apply top-$p$ with $p = 0.8$. How many tokens are included, and what are their sampling probabilities?
+3. Now set $T = 2$ and recompute top-$p$ with $p = 0.8$. Does the number of included tokens change? Why?
 
 ## Exercise 4: Beam Search (Second-Order Markov)
 
