@@ -16,14 +16,6 @@ A model outputs logits $z = [1, 0, -1]$ for tokens $\{a, b, c\}$.
 
 Implement softmax with temperature and compute the full probability distribution for $T \in \{0.5, 1, 2, 5\}$. Plot $P(\text{token})$ vs. $T$ for each token and describe what happens to the distribution as $T$ increases.
 
-**Colab link:** _______________________________________________
-
-**In one sentence, what happens to the distribution as $T$ increases?**
-
-&nbsp;
-
-&nbsp;
-
 ## Exercise 2: Top-$k$ and Top-$p$ Sampling
 
 Top-$k$ keeps the $k$ highest-probability tokens and sets the rest to zero. Top-$p$ (nucleus sampling) keeps the fewest tokens whose cumulative probability reaches $p$.
@@ -38,51 +30,32 @@ Implement both sampling methods and use them to answer the following. For each m
 2. Apply top-$p$ with $p = 0.8$. How many tokens are included, and what are their sampling probabilities?
 3. Now set $T = 2$ and recompute top-$p$ with $p = 0.8$. Does the number of included tokens change?
 
-**Colab link:** _______________________________________________
-
-**Q1 answer** (sampling probabilities, top-3 only, others zero):
-
-&nbsp;
-
-**Q2 answer** (number of tokens included, their probabilities):
-
-&nbsp;
-
-**Q3 answer** (does the count change, and why?):
-
-&nbsp;
-
-&nbsp;
-
 ## Exercise 3: Beam Search (Second-Order Markov)
 
-Vocab $\{a, b\}$, three steps. Step 3 depends on both previous tokens.
+Vocab $\{a, b, c, d, e\}$, three steps. Transition probabilities follow $p(1-p)^d$ normalized per row, where $d = |i-j|$ is the distance between token positions and $p = 0.5$. Step 3 conditions only on the second previous token $t_1$, not $t_2$.
 
-Step 1 (log-probs, base $e$):
+Step 1 (log-probs from start):
 
 | Token | $\ln P(t_1 \mid \text{start})$ |
 |-------|------|
-| a     | $-0.51$ |
-| b     | $-0.92$ |
+| a | $-2.30$ |
+| b | $-1.61$ |
+| c | $-0.92$ |
+| d | $-1.61$ |
+| e | $-2.30$ |
 
-Step 2 (first-order):
+Step 2 (first-order). Step 3 uses the same table, indexed by $t_1$:
 
-| From | $\ln P(a)$ | $\ln P(b)$ |
-|------|-----------|-----------|
-| a    | $-1.20$   | $-0.36$   |
-| b    | $-0.22$   | $-1.61$   |
-
-Step 3 (second-order):
-
-| From    | $\ln P(a)$ | $\ln P(b)$ |
-|---------|-----------|-----------|
-| (a, a)  | $-1.61$   | $-0.22$   |
-| (a, b)  | $-0.92$   | $-0.51$   |
-| (b, a)  | $-0.11$   | $-2.30$   |
-| (b, b)  | $-0.92$   | $-0.51$   |
+| From | $\ln P(a)$ | $\ln P(b)$ | $\ln P(c)$ | $\ln P(d)$ | $\ln P(e)$ |
+|------|----------|----------|----------|----------|----------|
+| a    | $-0.66$ | $-1.35$ | $-2.05$ | $-2.74$ | $-3.43$ |
+| b    | $-1.56$ | $-0.86$ | $-1.56$ | $-2.25$ | $-2.94$ |
+| c    | $-2.30$ | $-1.61$ | $-0.92$ | $-1.61$ | $-2.30$ |
+| d    | $-2.94$ | $-2.25$ | $-1.56$ | $-0.86$ | $-1.56$ |
+| e    | $-3.43$ | $-2.74$ | $-2.05$ | $-1.35$ | $-0.66$ |
 
 1. Trace greedy decoding ($B=1$). Report the sequence and its cumulative log-probability (round to two decimals).
-2. Trace beam search ($B=3$) for all three steps. At each step, list all candidate sequences with their cumulative log-probabilities and identify which three are kept. Report the top sequence and its log-probability.
+2. Trace beam search ($B=3$) for all three steps. At each step, list the candidates considered and which three are kept. Report the top sequence and its log-probability.
 
 **Q1 answer** (sequence and log-probability):
 
@@ -96,4 +69,4 @@ Step 3 (second-order):
 
 &nbsp;
 
-**Hint for 2:** At step 3, note that $\ln P(a \mid b, a) = -0.11$ (very confident, $P \approx 0.9$), while the greedy path's step-3 log-prob is much worse. Even though $b$ has a lower step-1 log-prob than $a$, the strong continuation after $(b, a)$ makes $b\!\to\!a\!\to\!a$ the best overall path.
+**Hint:** The table is symmetric — tokens closer to the source are always more likely. For step 3, look up the row for $t_1$ (the first token generated), not $t_2$.
