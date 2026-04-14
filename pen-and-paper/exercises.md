@@ -54,7 +54,7 @@ Step 2 (first-order). Step 3 uses the same table, indexed by $v_1$:
 | d    | $-2.94$ | $-2.25$ | $-1.56$ | $-0.86$ | $-1.56$ |
 | e    | $-3.43$ | $-2.74$ | $-2.05$ | $-1.35$ | $-0.66$ |
 
-Run beam search with $B=3$ for all three steps. At each step write down the top 3 sequences and their cumulative log-probabilities.
+Run beam search with $B=5$ for all three steps. At each step write down the top 5 sequences and their cumulative log-probabilities.
 
 **Answer:**
 
